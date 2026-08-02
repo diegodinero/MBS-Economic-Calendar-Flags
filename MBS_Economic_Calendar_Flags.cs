@@ -80,7 +80,7 @@ namespace MBS_Economic_Calendar_Flags
         private const int FlagMarkerSize = 22;
         private const int FlagInnerPadding = 2;
         private const int FlagStackSpacing = 4;
-        private const int FlagBottomMargin = 22;
+        private const int FlagBottomMargin = 14;
 
         //–– XML feed URL
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
@@ -184,7 +184,7 @@ namespace MBS_Economic_Calendar_Flags
                 if (jpySelected) allowed.Add("JPY");
                 if (nzdSelected) allowed.Add("NZD");
                 if (usdSelected) allowed.Add("USD");
-                if (!allowed.Contains(e.Currency))
+                if (!allowed.Contains(NormalizeCurrencyCode(e.Currency)))
                     return false;
             }
             return (e.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? highImpact : true)
@@ -324,7 +324,10 @@ namespace MBS_Economic_Calendar_Flags
                     continue;
 
                 int stackIndex = 0;
-                foreach (var ev in group.Value)
+                foreach (var ev in group.Value
+                    .OrderBy(e => GetImpactPriority(e.Impact))
+                    .ThenBy(e => e.Currency, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(e => e.Event, StringComparer.OrdinalIgnoreCase))
                 {
                     var flagImage = GetFlagImage(ev.Currency);
                     if (flagImage == null)
@@ -373,6 +376,12 @@ namespace MBS_Economic_Calendar_Flags
             impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Color.Orange :
             impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Color.Green :
             Color.White;
+
+        private static int GetImpactPriority(string impact) =>
+            impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? 0 :
+            impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? 1 :
+            impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? 2 :
+            3;
 
 
         private static DateTime ParseEventDateTimeForSorting(ForexEvent forexEvent)
@@ -619,11 +628,49 @@ namespace MBS_Economic_Calendar_Flags
 
         private static Image? GetFlagImage(string currency)
         {
-            var fileName = CurrencyFlagFiles.TryGetValue(currency, out var mappedFileName)
+            var normalizedCurrency = NormalizeCurrencyCode(currency);
+            var fileName = CurrencyFlagFiles.TryGetValue(normalizedCurrency, out var mappedFileName)
                 ? mappedFileName
                 : "none.png";
 
             return FlagImageCache.GetOrAdd(fileName, LoadFlagImage);
+        }
+
+        private static string NormalizeCurrencyCode(string currency)
+        {
+            if (string.IsNullOrWhiteSpace(currency))
+                return string.Empty;
+
+            var trimmed = currency.Trim();
+            if (CurrencyFlagFiles.ContainsKey(trimmed))
+                return trimmed;
+
+            var tokens = trimmed.Split(new[] { '/', '-', '_', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var token in tokens)
+            {
+                if (CurrencyFlagFiles.ContainsKey(token))
+                    return token;
+            }
+
+            if (trimmed.Length >= 6)
+            {
+                var first = trimmed.Substring(0, 3);
+                if (CurrencyFlagFiles.ContainsKey(first))
+                    return first;
+
+                var second = trimmed.Substring(3, 3);
+                if (CurrencyFlagFiles.ContainsKey(second))
+                    return second;
+            }
+
+            if (trimmed.Length >= 3)
+            {
+                var prefix = trimmed.Substring(0, 3);
+                if (CurrencyFlagFiles.ContainsKey(prefix))
+                    return prefix;
+            }
+
+            return trimmed;
         }
 
         private static Image? LoadFlagImage(string fileName)
