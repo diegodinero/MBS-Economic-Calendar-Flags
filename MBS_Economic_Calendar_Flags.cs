@@ -465,6 +465,7 @@ namespace MBS_Economic_Calendar_Flags
             using var dateCellBg = new SolidBrush(Color.FromArgb(255, 50, 56, 78));
             using var borderPen = new Pen(Color.FromArgb(255, 25, 30, 45), 1f);
             using var gridPen = new Pen(Color.FromArgb(140, 160, 160, 160), 1f);
+            using var separatorPen = new Pen(Color.FromArgb(200, 80, 90, 110), 1f); // More visible separator
             int estimatedHeight = headerHeight + groups.Sum(group => Math.Max(1, group.Count()) * rowHeight);
             int tableBottom = Math.Min(bottom, y + estimatedHeight);
             graphics.FillRectangle(tableBg, x, y, tableWidth, Math.Max(1, tableBottom - y));
@@ -482,7 +483,9 @@ namespace MBS_Economic_Calendar_Flags
 
                 graphics.FillRectangle(dateCellBg, x, cy, dateColWidth, groupHeight);
                 graphics.DrawLine(gridPen, x + dateColWidth, cy, x + dateColWidth, cy + groupHeight);
-                graphics.DrawLine(gridPen, x, cy, x + tableWidth, cy);
+
+                // Draw horizontal separator at top of each date group (full table width)
+                graphics.DrawLine(separatorPen, x, cy, x + tableWidth - 1, cy);
 
                 using (var format = new StringFormat
                 {
@@ -501,8 +504,9 @@ namespace MBS_Economic_Calendar_Flags
                     if (cy + rowHeight > bottom)
                         return;
 
+                    bool isFirstInGroup = i == 0;
                     bool isLastInGroup = i == groupEvents.Count - 1;
-                    DrawEventRow(graphics, ev, x, cy, dateColWidth, timeColWidth, currencyColWidth, impactColWidth, newsColWidth, rowHeight, tableRight, gridPen);
+                    DrawEventRow(graphics, ev, x, cy, dateColWidth, timeColWidth, currencyColWidth, impactColWidth, newsColWidth, rowHeight, tableRight, gridPen, separatorPen, isFirstInGroup);
                     cy += rowHeight;
                 }
             }
@@ -544,8 +548,14 @@ namespace MBS_Economic_Calendar_Flags
             graphics.DrawString(text, headerFont, Brushes.White, new RectangleF(x + 2, y, width - 4, height), format);
         }
 
-        private void DrawEventRow(Graphics graphics, ForexEvent ev, int x, int y, int dateColWidth, int timeColWidth, int currencyColWidth, int impactColWidth, int newsColWidth, int rowHeight, int tableRight, Pen gridPen)
+        private void DrawEventRow(Graphics graphics, ForexEvent ev, int x, int y, int dateColWidth, int timeColWidth, int currencyColWidth, int impactColWidth, int newsColWidth, int rowHeight, int tableRight, Pen gridPen, Pen separatorPen, bool isFirstRow)
         {
+            // Draw horizontal separator at the TOP of the row (except for first row)
+            if (!isFirstRow)
+            {
+                graphics.DrawLine(separatorPen, x + dateColWidth, y, tableRight, y);
+            }
+
             using var rowBg = new SolidBrush(Color.FromArgb(255, 62, 67, 88));
             graphics.FillRectangle(rowBg, x + dateColWidth, y, tableRight - (x + dateColWidth), rowHeight);
 
@@ -565,7 +575,6 @@ namespace MBS_Economic_Calendar_Flags
             graphics.DrawLine(gridPen, cx, y, cx, y + rowHeight);
 
             DrawCellText(graphics, ev.Event, font, Brushes.Gainsboro, cx, y, newsColWidth, rowHeight, StringAlignment.Center);
-            graphics.DrawLine(gridPen, x + dateColWidth, y + rowHeight, tableRight, y + rowHeight);
         }
 
         private void DrawCellText(Graphics graphics, string text, Font textFont, Brush brush, int x, int y, int width, int height, StringAlignment alignment)
