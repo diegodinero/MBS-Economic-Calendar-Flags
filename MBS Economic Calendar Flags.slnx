@@ -1,3 +1,7 @@
 <Solution>
+  <Properties>
+    <Property Name="StartupProject" Value="MBS.IndicatorHost\MBS.IndicatorHost.csproj" />
+  </Properties>
   <Project Path="MBS Economic Calendar Flags.csproj" />
+  <Project Path="MBS.IndicatorHost\MBS.IndicatorHost.csproj" />
 </Solution>
