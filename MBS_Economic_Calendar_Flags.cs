@@ -102,8 +102,8 @@ namespace MBS_Economic_Calendar_Flags
         private const int NewsTableWidth = 560;
         private const int NewsDateColWidth = 110;
         private const int NewsTimeColWidth = 60;
-        private const int NewsCurrencyColWidth = 92;
-        private const int NewsImpactColWidth = 68;
+        private const int NewsCurrencyColWidth = 100;
+        private const int NewsImpactColWidth = 72;
         private const int NewsHeaderHeight = 24;
         private const int NewsRowHeight = 22;
         private const int NewsImpactCircleSize = 10;
@@ -502,7 +502,7 @@ namespace MBS_Economic_Calendar_Flags
                         return;
 
                     bool isLastInGroup = i == groupEvents.Count - 1;
-                    DrawEventRow(graphics, ev, x, cy, dateColWidth, timeColWidth, currencyColWidth, impactColWidth, newsColWidth, rowHeight, tableRight, gridPen, isLastInGroup);
+                    DrawEventRow(graphics, ev, x, cy, dateColWidth, timeColWidth, currencyColWidth, impactColWidth, newsColWidth, rowHeight, tableRight, gridPen);
                     cy += rowHeight;
                 }
             }
@@ -544,7 +544,7 @@ namespace MBS_Economic_Calendar_Flags
             graphics.DrawString(text, headerFont, Brushes.White, new RectangleF(x + 2, y, width - 4, height), format);
         }
 
-        private void DrawEventRow(Graphics graphics, ForexEvent ev, int x, int y, int dateColWidth, int timeColWidth, int currencyColWidth, int impactColWidth, int newsColWidth, int rowHeight, int tableRight, Pen gridPen, bool drawFullWidthSeparator)
+        private void DrawEventRow(Graphics graphics, ForexEvent ev, int x, int y, int dateColWidth, int timeColWidth, int currencyColWidth, int impactColWidth, int newsColWidth, int rowHeight, int tableRight, Pen gridPen)
         {
             using var rowBg = new SolidBrush(Color.FromArgb(255, 62, 67, 88));
             graphics.FillRectangle(rowBg, x + dateColWidth, y, tableRight - (x + dateColWidth), rowHeight);
@@ -564,8 +564,8 @@ namespace MBS_Economic_Calendar_Flags
             cx += impactColWidth;
             graphics.DrawLine(gridPen, cx, y, cx, y + rowHeight);
 
-            DrawCellText(graphics, ev.Event, font, Brushes.Gainsboro, cx, y, newsColWidth, rowHeight, StringAlignment.Near);
-            graphics.DrawLine(gridPen, drawFullWidthSeparator ? x : x + dateColWidth, y + rowHeight, tableRight, y + rowHeight);
+            DrawCellText(graphics, ev.Event, font, Brushes.Gainsboro, cx, y, newsColWidth, rowHeight, StringAlignment.Center);
+            graphics.DrawLine(gridPen, x + dateColWidth, y + rowHeight, tableRight, y + rowHeight);
         }
 
         private void DrawCellText(Graphics graphics, string text, Font textFont, Brush brush, int x, int y, int width, int height, StringAlignment alignment)
