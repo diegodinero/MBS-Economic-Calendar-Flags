@@ -43,6 +43,7 @@ namespace MBS_Economic_Calendar_Flags
 
         private bool showNewsText = true;
         private bool showVerticalLines = true;
+        private bool showPastEvents = false;
 
 
         //–– Runtime state
@@ -53,6 +54,7 @@ namespace MBS_Economic_Calendar_Flags
         private readonly object lockObject = new object();
         private int newsPositionX = 500;
         private int newsPositionY = 10;
+        private static readonly TimeZoneInfo EasternTimeZone = ResolveEasternTimeZone();
 
         //–– XML feed URL
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
@@ -95,7 +97,6 @@ namespace MBS_Economic_Calendar_Flags
                 var xmlText = await http.GetStringAsync(XmlFeedUrl);
                 var doc = XDocument.Parse(xmlText);
 
-                var estZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
                 allEvents = doc.Descendants("event")
                     .Select(x =>
                     {
@@ -104,24 +105,21 @@ namespace MBS_Economic_Calendar_Flags
                             "MM-dd-yyyy",
                             CultureInfo.InvariantCulture
                         );
-                        var timePart = DateTime.ParseExact(
-                            x.Element("time")!.Value.Trim(),
+                        var rawTime = x.Element("time")!.Value.Trim();
+                        var normalizedTime = DateTime.TryParseExact(
+                            rawTime,
                             "h:mmtt",
-                            CultureInfo.InvariantCulture
-                        );
-                        var utcDt = DateTime.SpecifyKind(
-                            new DateTime(
-                                date.Year, date.Month, date.Day,
-                                timePart.Hour, timePart.Minute, 0
-                            ),
-                            DateTimeKind.Utc
-                        );
-                        var estDt = TimeZoneInfo.ConvertTimeFromUtc(utcDt, estZone);
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.None,
+                            out var timePart
+                        )
+                            ? timePart.ToString("HH:mm", CultureInfo.InvariantCulture)
+                            : rawTime;
 
                         return new ForexEvent
                         {
                             Date = date,
-                            Time = estDt.ToString("HH:mm"),
+                            Time = normalizedTime,
                             Currency = x.Element("country")!.Value.Trim(),
                             Event = x.Element("title")!.Value.Trim(),
                             Impact = x.Element("impact")!.Value.Trim(),
@@ -165,6 +163,15 @@ namespace MBS_Economic_Calendar_Flags
                             .Where(e => e.Date.Date >= customStartDate.Date
                                      && e.Date.Date <= customEndDate.Date)
                             .ToList();
+
+                        if (!showPastEvents)
+                        {
+                            var referenceDateTimeUtc = GetReferenceDateTimeUtc();
+                            temp = temp
+                                .Where(e => !TryGetEventDateTimeUtc(e, out var eventDateTimeUtc)
+                                        || eventDateTimeUtc >= referenceDateTimeUtc)
+                                .ToList();
+                        }
                     }
                     forexEvents = temp.Where(ShouldIncludeEvent).ToList();
                 }
@@ -261,7 +268,7 @@ namespace MBS_Economic_Calendar_Flags
                     .Windows[args.WindowIndex]
                     .CoordinatesConverter;
 
-                foreach (var ev in forexEvents.OrderBy(e => ParseEventDateTimeForSorting(e.Time)))
+                foreach (var ev in forexEvents.OrderBy(ParseEventDateTimeForSorting))
                 {
                     // Pick line color
                     Pen linePen =
@@ -271,23 +278,11 @@ namespace MBS_Economic_Calendar_Flags
                         Pens.White;
 
                     // Convert event time
-                    if (!ev.Time.Equals("All Day", StringComparison.OrdinalIgnoreCase)
-                        && DateTime.TryParseExact(ev.Time, "HH:mm", null, DateTimeStyles.None, out var dt))
+                    if (TryGetEventDateTimeUtc(ev, out var eventDateTimeUtc))
                     {
-                        DateTime eventDateTime = ev.Date.Date
-                            .AddHours(dt.Hour)
-                            .AddMinutes(dt.Minute);
-
-                        var estZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
-                        bool isDst = estZone.IsDaylightSavingTime(eventDateTime);
-                        eventDateTime = ev.Date.Date
-                            .AddHours(dt.Hour)
-                            .AddMinutes(dt.Minute)
-                            .AddHours(4);
-
                         if (showVerticalLines)
                         {
-                            float xCoord = (float)conv.GetChartX(eventDateTime);
+                            float xCoord = (float)conv.GetChartX(eventDateTimeUtc);
                             g.DrawLine(linePen, xCoord, rect.Top, xCoord, rect.Bottom);
                         }
                     }
@@ -311,13 +306,12 @@ namespace MBS_Economic_Calendar_Flags
 
 
 
-        private DateTime ParseEventDateTimeForSorting(string timeString)
+        private static DateTime ParseEventDateTimeForSorting(ForexEvent forexEvent)
         {
-            if (timeString.Equals("All Day", StringComparison.OrdinalIgnoreCase))
-                return DateTime.Today;
-            return DateTime.TryParseExact(timeString, "HH:mm", null, DateTimeStyles.None, out var dt)
-                ? DateTime.Today.AddHours(dt.Hour).AddMinutes(dt.Minute)
-                : DateTime.Today;
+            if (TryGetEventDateTimeUtc(forexEvent, out var eventDateTimeUtc))
+                return eventDateTimeUtc;
+
+            return forexEvent.Date.Date;
         }
 
         public override void Dispose()
@@ -394,6 +388,11 @@ namespace MBS_Economic_Calendar_Flags
 
                 settings.Add(new SettingItemBoolean("showNewsText", showNewsText) { Text = "Show News Text" });
                 settings.Add(new SettingItemBoolean("showVerticalLines", showVerticalLines) { Text = "Show Vertical Lines" });
+                settings.Add(new SettingItemBoolean("showPastEvents", showPastEvents)
+                {
+                    Text = "Show Past Events",
+                    Relation = new SettingItemRelationVisibility("dateMode", new object[] { siCustom })
+                });
 
 
                 return settings;
@@ -426,10 +425,62 @@ namespace MBS_Economic_Calendar_Flags
 
                 if (SettingItemExtensions.TryGetValue<bool>(value, "showNewsText", out var snt)) showNewsText = snt;
                 if (SettingItemExtensions.TryGetValue<bool>(value, "showVerticalLines", out var svl)) showVerticalLines = svl;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "showPastEvents", out var spe)) showPastEvents = spe;
 
 
                 ApplyFilters();
             }
+        }
+
+        private static TimeZoneInfo ResolveEasternTimeZone()
+        {
+            foreach (var id in new[] { "Eastern Standard Time", "America/New_York" })
+            {
+                try
+                {
+                    return TimeZoneInfo.FindSystemTimeZoneById(id);
+                }
+                catch (TimeZoneNotFoundException)
+                {
+                }
+                catch (InvalidTimeZoneException)
+                {
+                }
+            }
+
+            return TimeZoneInfo.Utc;
+        }
+
+        private DateTime GetReferenceDateTimeUtc()
+        {
+            var referenceDateTime = Symbol?.LastDateTime ?? DateTime.UtcNow;
+            return referenceDateTime.Kind == DateTimeKind.Utc
+                ? referenceDateTime
+                : referenceDateTime.ToUniversalTime();
+        }
+
+        private static bool TryGetEventDateTimeUtc(ForexEvent forexEvent, out DateTime eventDateTimeUtc)
+        {
+            eventDateTimeUtc = default;
+
+            if (!DateTime.TryParseExact(
+                forexEvent.Time,
+                "HH:mm",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var eventTime))
+            {
+                return false;
+            }
+
+            var easternDateTime = DateTime.SpecifyKind(
+                forexEvent.Date.Date
+                    .AddHours(eventTime.Hour)
+                    .AddMinutes(eventTime.Minute),
+                DateTimeKind.Unspecified);
+
+            eventDateTimeUtc = TimeZoneInfo.ConvertTimeToUtc(easternDateTime, EasternTimeZone);
+            return true;
         }
 
         public class ForexEvent
