@@ -322,7 +322,7 @@ namespace MBS_Economic_Calendar_Flags
                 {
                     g.DrawString($"Showing {forexEvents.Count} events", font, Brushes.Yellow, x + 2, y + 2);
                     y += font.Height + 6;
-                    DrawEventList(g, forexEvents.OrderBy(ParseEventDateTimeForSorting), x + 2, y, rect.Bottom);
+                    DrawEventList(g, forexEvents.OrderBy(ParseEventDateTimeForSorting), x + 2, y, rect.Right, rect.Bottom);
                 }
             }
 
@@ -427,11 +427,24 @@ namespace MBS_Economic_Calendar_Flags
             return hoveredEvent;
         }
 
-        private void DrawEventList(Graphics graphics, IEnumerable<ForexEvent> events, int x, int y, int bottom)
+        private void DrawEventList(Graphics graphics, IEnumerable<ForexEvent> events, int x, int y, int right, int bottom)
         {
             int cy = y;
+            DateTime? currentDate = null;
             foreach (var ev in events)
             {
+                var eventDate = ev.Date.Date;
+                if (currentDate == null || currentDate.Value != eventDate)
+                {
+                    int separatorHeight = headerFont.Height + 6;
+                    if (cy + separatorHeight > bottom)
+                        break;
+
+                    DrawDaySeparator(graphics, eventDate, x, cy, right);
+                    cy += separatorHeight;
+                    currentDate = eventDate;
+                }
+
                 if (cy + font.Height > bottom)
                     break;
 
@@ -445,6 +458,16 @@ namespace MBS_Economic_Calendar_Flags
                 graphics.DrawString(eventLine, font, impactBrush, x, cy);
                 cy += font.Height + 2;
             }
+        }
+
+        private void DrawDaySeparator(Graphics graphics, DateTime date, int x, int y, int right)
+        {
+            string label = date.ToString("dddd, dd MMM yyyy", CultureInfo.InvariantCulture);
+            int textY = y;
+            int lineY = y + headerFont.Height / 2 + 1;
+
+            graphics.DrawString(label, headerFont, Brushes.Cyan, x, textY);
+            graphics.DrawLine(Pens.DimGray, x, lineY, right - 4, lineY);
         }
 
         private int GetEventCardHeight()
