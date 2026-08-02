@@ -1,10 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using TradingPlatform.BusinessLayer;
@@ -55,6 +60,27 @@ namespace MBS_Economic_Calendar_Flags
         private int newsPositionX = 500;
         private int newsPositionY = 10;
         private static readonly TimeZoneInfo EasternTimeZone = ResolveEasternTimeZone();
+        private static readonly SemaphoreSlim CacheSemaphore = new SemaphoreSlim(1, 1);
+        private static readonly ConcurrentDictionary<string, Image?> FlagImageCache = new ConcurrentDictionary<string, Image?>(StringComparer.OrdinalIgnoreCase);
+        private static readonly IReadOnlyDictionary<string, string> CurrencyFlagFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["AUD"] = "australia.png",
+            ["CAD"] = "canada.png",
+            ["CHF"] = "switzerland.png",
+            ["CNY"] = "china.png",
+            ["EUR"] = "euro_zone.png",
+            ["GBP"] = "united_kingdom.png",
+            ["JPY"] = "japan.png",
+            ["NZD"] = "new_zealand.png",
+            ["USD"] = "united_states.png"
+        };
+        private static List<ForexEvent>? cachedEvents;
+        private static DateTime cacheFetchedAtUtc = DateTime.MinValue;
+        private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
+        private const int FlagMarkerSize = 22;
+        private const int FlagInnerPadding = 2;
+        private const int FlagStackSpacing = 4;
+        private const int FlagBottomMargin = 14;
 
         //–– XML feed URL
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
@@ -93,42 +119,7 @@ namespace MBS_Economic_Calendar_Flags
         {
             try
             {
-                using var http = new HttpClient();
-                var xmlText = await http.GetStringAsync(XmlFeedUrl);
-                var doc = XDocument.Parse(xmlText);
-
-                allEvents = doc.Descendants("event")
-                    .Select(x =>
-                    {
-                        var date = DateTime.ParseExact(
-                            x.Element("date")!.Value.Trim(),
-                            "MM-dd-yyyy",
-                            CultureInfo.InvariantCulture
-                        );
-                        var rawTime = x.Element("time")!.Value.Trim();
-                        var normalizedTime = DateTime.TryParseExact(
-                            rawTime,
-                            "h:mmtt",
-                            CultureInfo.InvariantCulture,
-                            DateTimeStyles.None,
-                            out var timePart
-                        )
-                            ? timePart.ToString("HH:mm", CultureInfo.InvariantCulture)
-                            : rawTime;
-
-                        return new ForexEvent
-                        {
-                            Date = date,
-                            Time = normalizedTime,
-                            Currency = x.Element("country")!.Value.Trim(),
-                            Event = x.Element("title")!.Value.Trim(),
-                            Impact = x.Element("impact")!.Value.Trim(),
-                            Forecast = x.Element("forecast")?.Value.Trim(),
-                            Previous = x.Element("previous")?.Value.Trim(),
-                        };
-                    })
-                    .ToList();
-
+                allEvents = await GetCachedEventsAsync();
                 Debug.WriteLine($"[EconomicEventsIndicator] Fetched {allEvents.Count} events");
                 fetchError = null;
             }
@@ -193,7 +184,7 @@ namespace MBS_Economic_Calendar_Flags
                 if (jpySelected) allowed.Add("JPY");
                 if (nzdSelected) allowed.Add("NZD");
                 if (usdSelected) allowed.Add("USD");
-                if (!allowed.Contains(e.Currency))
+                if (!allowed.Contains(NormalizeCurrencyCode(e.Currency)))
                     return false;
             }
             return (e.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? highImpact : true)
@@ -301,9 +292,96 @@ namespace MBS_Economic_Calendar_Flags
                         y += font.Height + 6;
                     }
                 }
+
+                DrawEventFlags(g, rect, eventTimeUtc => (float)conv.GetChartX(eventTimeUtc));
             }
         }
 
+        private void DrawEventFlags(Graphics graphics, Rectangle rect, Func<DateTime, float> getChartX)
+        {
+            if (forexEvents == null)
+                return;
+
+            var groupedEvents = new SortedDictionary<DateTime, List<ForexEvent>>();
+            foreach (var ev in forexEvents)
+            {
+                if (!TryGetEventDateTimeUtc(ev, out var eventDateTimeUtc))
+                    continue;
+
+                if (!groupedEvents.TryGetValue(eventDateTimeUtc, out var eventsAtTime))
+                {
+                    eventsAtTime = new List<ForexEvent>();
+                    groupedEvents[eventDateTimeUtc] = eventsAtTime;
+                }
+
+                eventsAtTime.Add(ev);
+            }
+
+            foreach (var group in groupedEvents)
+            {
+                float xCoord = getChartX(group.Key);
+                if (xCoord < rect.Left - FlagMarkerSize || xCoord > rect.Right + FlagMarkerSize)
+                    continue;
+
+                int stackIndex = 0;
+                foreach (var ev in group.Value
+                    .OrderBy(e => GetImpactPriority(e.Impact))
+                    .ThenBy(e => e.Currency, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(e => e.Event, StringComparer.OrdinalIgnoreCase))
+                {
+                    var flagImage = GetFlagImage(ev.Currency);
+                    if (flagImage == null)
+                        continue;
+
+                    int drawX = (int)Math.Round(xCoord - (FlagMarkerSize / 2f));
+                    int drawY = rect.Bottom - FlagBottomMargin - FlagMarkerSize - (stackIndex * (FlagMarkerSize + FlagStackSpacing));
+                    if (drawY < rect.Top)
+                        break;
+
+                    DrawFlagMarker(
+                        graphics,
+                        flagImage,
+                        new Rectangle(drawX, drawY, FlagMarkerSize, FlagMarkerSize),
+                        GetImpactColor(ev.Impact));
+                    stackIndex++;
+                }
+            }
+        }
+
+        private static void DrawFlagMarker(Graphics graphics, Image flagImage, Rectangle bounds, Color impactColor)
+        {
+            using var outlinePen = new Pen(impactColor, 2f);
+            using var backgroundBrush = new SolidBrush(Color.FromArgb(70, impactColor));
+            using var clipPath = new GraphicsPath();
+            clipPath.AddEllipse(bounds);
+
+            var state = graphics.Save();
+            try
+            {
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                graphics.FillEllipse(backgroundBrush, bounds);
+                graphics.SetClip(clipPath);
+                graphics.DrawImage(flagImage, Rectangle.Inflate(bounds, -FlagInnerPadding, -FlagInnerPadding));
+            }
+            finally
+            {
+                graphics.Restore(state);
+            }
+
+            graphics.DrawEllipse(outlinePen, bounds);
+        }
+
+        private static Color GetImpactColor(string impact) =>
+            impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Color.Red :
+            impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Color.Orange :
+            impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Color.Green :
+            Color.White;
+
+        private static int GetImpactPriority(string impact) =>
+            impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? 0 :
+            impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? 1 :
+            impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? 2 :
+            3;
 
 
         private static DateTime ParseEventDateTimeForSorting(ForexEvent forexEvent)
@@ -449,6 +527,181 @@ namespace MBS_Economic_Calendar_Flags
             }
 
             return TimeZoneInfo.Utc;
+        }
+
+        private static bool TryGetFreshCache(out List<ForexEvent>? events)
+        {
+            events = null;
+            if (cachedEvents == null)
+                return false;
+
+            if (DateTime.UtcNow - cacheFetchedAtUtc > CacheLifetime)
+                return false;
+
+            events = CloneEvents(cachedEvents);
+            return true;
+        }
+
+        private static async Task<List<ForexEvent>> GetCachedEventsAsync()
+        {
+            if (TryGetFreshCache(out var freshEvents) && freshEvents != null)
+                return freshEvents;
+
+            await CacheSemaphore.WaitAsync();
+            try
+            {
+                if (TryGetFreshCache(out freshEvents) && freshEvents != null)
+                    return freshEvents;
+
+                using var http = new HttpClient();
+                var xmlText = await http.GetStringAsync(XmlFeedUrl);
+                var parsedEvents = ParseForexEvents(xmlText);
+
+                cachedEvents = parsedEvents;
+                cacheFetchedAtUtc = DateTime.UtcNow;
+                return CloneEvents(parsedEvents);
+            }
+            catch
+            {
+                if (cachedEvents != null)
+                    return CloneEvents(cachedEvents);
+
+                throw;
+            }
+            finally
+            {
+                CacheSemaphore.Release();
+            }
+        }
+
+        private static List<ForexEvent> ParseForexEvents(string xmlText)
+        {
+            var doc = XDocument.Parse(xmlText);
+            return doc.Descendants("event")
+                .Select(x =>
+                {
+                    var date = DateTime.ParseExact(
+                        x.Element("date")!.Value.Trim(),
+                        "MM-dd-yyyy",
+                        CultureInfo.InvariantCulture
+                    );
+                    var rawTime = x.Element("time")!.Value.Trim();
+                    var normalizedTime = DateTime.TryParseExact(
+                        rawTime,
+                        "h:mmtt",
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.None,
+                        out var timePart
+                    )
+                        ? timePart.ToString("HH:mm", CultureInfo.InvariantCulture)
+                        : rawTime;
+
+                    return new ForexEvent
+                    {
+                        Date = date,
+                        Time = normalizedTime,
+                        Currency = x.Element("country")!.Value.Trim(),
+                        Event = x.Element("title")!.Value.Trim(),
+                        Impact = x.Element("impact")!.Value.Trim(),
+                        Forecast = x.Element("forecast")?.Value.Trim(),
+                        Previous = x.Element("previous")?.Value.Trim(),
+                    };
+                })
+                .ToList();
+        }
+
+        private static List<ForexEvent> CloneEvents(IEnumerable<ForexEvent> events)
+        {
+            return events
+                .Select(ev => new ForexEvent
+                {
+                    Date = ev.Date,
+                    Time = ev.Time,
+                    Currency = ev.Currency,
+                    Event = ev.Event,
+                    Impact = ev.Impact,
+                    Forecast = ev.Forecast,
+                    Previous = ev.Previous,
+                })
+                .ToList();
+        }
+
+        private static Image? GetFlagImage(string currency)
+        {
+            var normalizedCurrency = NormalizeCurrencyCode(currency);
+            var fileName = CurrencyFlagFiles.TryGetValue(normalizedCurrency, out var mappedFileName)
+                ? mappedFileName
+                : "none.png";
+
+            return FlagImageCache.GetOrAdd(fileName, LoadFlagImage);
+        }
+
+        private static string NormalizeCurrencyCode(string currency)
+        {
+            if (string.IsNullOrWhiteSpace(currency))
+                return string.Empty;
+
+            var trimmed = currency.Trim();
+            if (CurrencyFlagFiles.ContainsKey(trimmed))
+                return trimmed;
+
+            var tokens = trimmed.Split(new[] { '/', '-', '_', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var token in tokens)
+            {
+                if (CurrencyFlagFiles.ContainsKey(token))
+                    return token;
+            }
+
+            if (trimmed.Length >= 6)
+            {
+                var first = trimmed.Substring(0, 3);
+                if (CurrencyFlagFiles.ContainsKey(first))
+                    return first;
+
+                var second = trimmed.Substring(3, 3);
+                if (CurrencyFlagFiles.ContainsKey(second))
+                    return second;
+            }
+
+            if (trimmed.Length >= 3)
+            {
+                var prefix = trimmed.Substring(0, 3);
+                if (CurrencyFlagFiles.ContainsKey(prefix))
+                    return prefix;
+            }
+
+            return trimmed;
+        }
+
+        private static Image? LoadFlagImage(string fileName)
+        {
+            var resourceImage = LoadEmbeddedFlagImage(fileName);
+            if (resourceImage != null)
+                return resourceImage;
+
+            var assemblyDirectory = Path.GetDirectoryName(typeof(MBS_Economic_Calendar_Flags).Assembly.Location);
+            if (string.IsNullOrEmpty(assemblyDirectory))
+                return null;
+
+            var filePath = Path.Combine(assemblyDirectory, "Flags", fileName);
+            if (!File.Exists(filePath))
+                return null;
+
+            using var stream = File.OpenRead(filePath);
+            using var image = Image.FromStream(stream);
+            return new Bitmap(image);
+        }
+
+        private static Image? LoadEmbeddedFlagImage(string fileName)
+        {
+            var assembly = typeof(MBS_Economic_Calendar_Flags).Assembly;
+            var resourceName = $"{typeof(MBS_Economic_Calendar_Flags).Namespace}.Flags.{fileName.Replace('\\', '.').Replace('/', '.')}";
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+                return null;
+
+            using var image = Image.FromStream(stream);
+            return new Bitmap(image);
         }
 
         private DateTime GetReferenceDateTimeUtc()
