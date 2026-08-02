@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -75,10 +77,10 @@ namespace MBS_Economic_Calendar_Flags
         private static List<ForexEvent>? cachedEvents;
         private static DateTime cacheFetchedAtUtc = DateTime.MinValue;
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
-        private const int FlagWidth = 18;
-        private const int FlagHeight = 12;
-        private const int FlagStackSpacing = 2;
-        private const int FlagBottomMargin = 26;
+        private const int FlagMarkerSize = 22;
+        private const int FlagInnerPadding = 2;
+        private const int FlagStackSpacing = 4;
+        private const int FlagBottomMargin = 28;
 
         //–– XML feed URL
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
@@ -318,7 +320,7 @@ namespace MBS_Economic_Calendar_Flags
             foreach (var group in groupedEvents)
             {
                 float xCoord = getChartX(group.Key);
-                if (xCoord < rect.Left - FlagWidth || xCoord > rect.Right + FlagWidth)
+                if (xCoord < rect.Left - FlagMarkerSize || xCoord > rect.Right + FlagMarkerSize)
                     continue;
 
                 int stackIndex = 0;
@@ -328,15 +330,38 @@ namespace MBS_Economic_Calendar_Flags
                     if (flagImage == null)
                         continue;
 
-                    int drawX = (int)Math.Round(xCoord - (FlagWidth / 2f));
-                    int drawY = rect.Bottom - FlagBottomMargin - FlagHeight - (stackIndex * (FlagHeight + FlagStackSpacing));
+                    int drawX = (int)Math.Round(xCoord - (FlagMarkerSize / 2f));
+                    int drawY = rect.Bottom - FlagBottomMargin - FlagMarkerSize - (stackIndex * (FlagMarkerSize + FlagStackSpacing));
                     if (drawY < rect.Top)
                         break;
 
-                    graphics.DrawImage(flagImage, new Rectangle(drawX, drawY, FlagWidth, FlagHeight));
+                    DrawFlagMarker(graphics, flagImage, new Rectangle(drawX, drawY, FlagMarkerSize, FlagMarkerSize));
                     stackIndex++;
                 }
             }
+        }
+
+        private static void DrawFlagMarker(Graphics graphics, Image flagImage, Rectangle bounds)
+        {
+            using var outlinePen = new Pen(Color.Yellow, 2f);
+            using var backgroundBrush = new SolidBrush(Color.FromArgb(20, 20, 20));
+            using var clipPath = new GraphicsPath();
+            clipPath.AddEllipse(bounds);
+
+            var state = graphics.Save();
+            try
+            {
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                graphics.FillEllipse(backgroundBrush, bounds);
+                graphics.SetClip(clipPath);
+                graphics.DrawImage(flagImage, Rectangle.Inflate(bounds, -FlagInnerPadding, -FlagInnerPadding));
+            }
+            finally
+            {
+                graphics.Restore(state);
+            }
+
+            graphics.DrawEllipse(outlinePen, bounds);
         }
 
 
@@ -593,6 +618,10 @@ namespace MBS_Economic_Calendar_Flags
 
         private static Image? LoadFlagImage(string fileName)
         {
+            var resourceImage = LoadEmbeddedFlagImage(fileName);
+            if (resourceImage != null)
+                return resourceImage;
+
             var assemblyDirectory = Path.GetDirectoryName(typeof(MBS_Economic_Calendar_Flags).Assembly.Location);
             if (string.IsNullOrEmpty(assemblyDirectory))
                 return null;
@@ -602,6 +631,18 @@ namespace MBS_Economic_Calendar_Flags
                 return null;
 
             using var stream = File.OpenRead(filePath);
+            using var image = Image.FromStream(stream);
+            return new Bitmap(image);
+        }
+
+        private static Image? LoadEmbeddedFlagImage(string fileName)
+        {
+            var assembly = typeof(MBS_Economic_Calendar_Flags).Assembly;
+            var resourceName = $"{typeof(MBS_Economic_Calendar_Flags).Namespace}.Flags.{fileName.Replace('\\', '.').Replace('/', '.')}";
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+                return null;
+
             using var image = Image.FromStream(stream);
             return new Bitmap(image);
         }

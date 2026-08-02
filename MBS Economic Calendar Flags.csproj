@@ -27,10 +27,7 @@
     <PackageReference Include="System.Drawing.Common" Version="10.0.10" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Flags\**\*.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>Flags\%(RecursiveDir)%(Filename)%(Extension)</Link>
-    </None>
+    <EmbeddedResource Include="Flags\**\*.png" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="TradingPlatform.BusinessLayer">
