@@ -99,11 +99,11 @@ namespace MBS_Economic_Calendar_Flags
         private const int FlagBottomMargin = 2;
         private const int EventCardWidth = 235;
         private const int EventCardPadding = 6;
-        private const int NewsTableWidth = 560;
+        private const int NewsTableWidth = 639;
         private const int NewsDateColWidth = 110;
         private const int NewsTimeColWidth = 60;
         private const int NewsCurrencyColWidth = 100;
-        private const int NewsImpactColWidth = 72;
+        private const int NewsImpactColWidth = 96;
         private const int NewsHeaderHeight = 24;
         private const int NewsRowHeight = 22;
         private const int NewsImpactCircleSize = 10;
