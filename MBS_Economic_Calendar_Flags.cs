@@ -1,0 +1,446 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Globalization;
+using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
+using System.Xml.Linq;
+using TradingPlatform.BusinessLayer;
+using TradingPlatform.BusinessLayer.Chart;
+
+namespace MBS_Economic_Calendar_Flags
+{
+    /// <summary>
+    /// An example of blank indicator. Add your code, compile it and use on the charts in the assigned trading terminal.
+    /// Information about API you can find here: http://api.quantower.com
+    /// Code samples: https://github.com/Quantower/Examples
+    /// </summary>
+	public class MBS_Economic_Calendar_Flags : Indicator
+    {
+
+        //–– Settings fields
+        private int dateMode = 1;  // 1 = current chart date, 2 = custom range
+        private DateTime customStartDate = DateTime.UtcNow.Date;
+        private DateTime customEndDate = DateTime.UtcNow.Date;
+
+        private bool highImpact = true;
+        private bool mediumImpact = true;
+        private bool lowImpact = true;
+        private bool nonEconomicNews = true;
+
+        private int currencyMode = 1;  // 1 = all, 2 = select
+        private bool audSelected;
+        private bool cadSelected;
+        private bool chfSelected;
+        private bool cnySelected;
+        private bool eurSelected;
+        private bool gbpSelected;
+        private bool jpySelected;
+        private bool nzdSelected;
+        private bool usdSelected;
+
+        private bool showNewsText = true;
+        private bool showVerticalLines = true;
+
+
+        //–– Runtime state
+        private List<ForexEvent>? allEvents;
+        private List<ForexEvent>? forexEvents;
+        private Exception? fetchError;
+        private Font font = new Font("Consolas", 10f);
+        private readonly object lockObject = new object();
+        private int newsPositionX = 500;
+        private int newsPositionY = 10;
+
+        //–– XML feed URL
+        private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
+
+        /// <summary>
+        /// Indicator's constructor. Contains general information: name, description, LineSeries etc. 
+        /// </summary>
+        public MBS_Economic_Calendar_Flags()
+            : base()
+        {
+            // Defines indicator's name and description.
+            Name = "Economic Events Flags";
+            Description = "Display Economic Events Flags";
+
+            // By default indicator will be applied on main window of the chart
+            SeparateWindow = false;
+        }
+
+        /// <summary>
+        /// This function will be called after creating an indicator as well as after its input params reset or chart (symbol or timeframe) updates.
+        /// </summary>
+        protected override void OnInit()
+        {
+            base.OnInit();
+            foreach (var fam in new[] { "Droid Sans Mono", "DejaVu Sans Mono", "Consolas", "Verdana" })
+            {
+                var test = new Font(fam, 10f);
+                font = test;
+                if (font.Name == fam)
+                    break;
+            }
+            _ = FetchDataOnce();
+        }
+
+        private async Task FetchDataOnce()
+        {
+            try
+            {
+                using var http = new HttpClient();
+                var xmlText = await http.GetStringAsync(XmlFeedUrl);
+                var doc = XDocument.Parse(xmlText);
+
+                var estZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+                allEvents = doc.Descendants("event")
+                    .Select(x =>
+                    {
+                        var date = DateTime.ParseExact(
+                            x.Element("date")!.Value.Trim(),
+                            "MM-dd-yyyy",
+                            CultureInfo.InvariantCulture
+                        );
+                        var timePart = DateTime.ParseExact(
+                            x.Element("time")!.Value.Trim(),
+                            "h:mmtt",
+                            CultureInfo.InvariantCulture
+                        );
+                        var utcDt = DateTime.SpecifyKind(
+                            new DateTime(
+                                date.Year, date.Month, date.Day,
+                                timePart.Hour, timePart.Minute, 0
+                            ),
+                            DateTimeKind.Utc
+                        );
+                        var estDt = TimeZoneInfo.ConvertTimeFromUtc(utcDt, estZone);
+
+                        return new ForexEvent
+                        {
+                            Date = date,
+                            Time = estDt.ToString("HH:mm"),
+                            Currency = x.Element("country")!.Value.Trim(),
+                            Event = x.Element("title")!.Value.Trim(),
+                            Impact = x.Element("impact")!.Value.Trim(),
+                            Forecast = x.Element("forecast")?.Value.Trim(),
+                            Previous = x.Element("previous")?.Value.Trim(),
+                        };
+                    })
+                    .ToList();
+
+                Debug.WriteLine($"[EconomicEventsIndicator] Fetched {allEvents.Count} events");
+                fetchError = null;
+            }
+            catch (Exception ex)
+            {
+                fetchError = ex;
+                Debug.WriteLine($"[EconomicEventsIndicator] Fetch error: {ex}");
+            }
+
+            ApplyFilters();
+        }
+
+        private void ApplyFilters()
+        {
+            lock (lockObject)
+            {
+                if (allEvents == null)
+                {
+                    forexEvents = null;
+                }
+                else
+                {
+                    List<ForexEvent> temp;
+                    if (dateMode == 1)
+                    {
+                        var chartDate = Symbol?.LastDateTime.Date ?? DateTime.Today;
+                        temp = allEvents.Where(e => e.Date.Date == chartDate).ToList();
+                    }
+                    else
+                    {
+                        temp = allEvents
+                            .Where(e => e.Date.Date >= customStartDate.Date
+                                     && e.Date.Date <= customEndDate.Date)
+                            .ToList();
+                    }
+                    forexEvents = temp.Where(ShouldIncludeEvent).ToList();
+                }
+            }
+            this.Refresh();
+        }
+
+        private bool ShouldIncludeEvent(ForexEvent e)
+        {
+            if (currencyMode == 2)
+            {
+                var allowed = new HashSet<string>();
+                if (audSelected) allowed.Add("AUD");
+                if (cadSelected) allowed.Add("CAD");
+                if (chfSelected) allowed.Add("CHF");
+                if (cnySelected) allowed.Add("CNY");
+                if (eurSelected) allowed.Add("EUR");
+                if (gbpSelected) allowed.Add("GBP");
+                if (jpySelected) allowed.Add("JPY");
+                if (nzdSelected) allowed.Add("NZD");
+                if (usdSelected) allowed.Add("USD");
+                if (!allowed.Contains(e.Currency))
+                    return false;
+            }
+            return (e.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? highImpact : true)
+                && (e.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? mediumImpact : true)
+                && (e.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? lowImpact : true)
+                && (e.Impact.Equals("Holiday", StringComparison.OrdinalIgnoreCase) ? nonEconomicNews : true);
+        }
+
+        protected override void OnSettingsUpdated()
+        {
+            base.OnSettingsUpdated();
+            ApplyFilters();
+        }
+
+        public override void OnPaintChart(PaintChartEventArgs args)
+        {
+            base.OnPaintChart(args);
+            if (CurrentChart == null || Symbol == null)
+                return;
+
+            var g = args.Graphics;
+            var rect = CurrentChart.Windows[args.WindowIndex].ClientRectangle;
+            g.SetClip(rect);
+
+            int x = rect.Left + newsPositionX;
+            int y = rect.Top + newsPositionY;
+
+            // ✅ Only show header + status messages if showNewsText = true
+            if (showNewsText)
+            {
+                var headerFont = new Font(font.FontFamily, 12f, FontStyle.Bold);
+                string header;
+                if (dateMode == 1)
+                {
+                    var chartDate = Symbol.LastDateTime.Date;
+                    header = $"Events for {chartDate:MM/dd/yyyy}";
+                }
+                else
+                {
+                    header = $"{DateTime.Now:MM/dd/yy} News via Forex Factory";
+                }
+
+                g.DrawString(header, headerFont, Brushes.Cyan, x + 2, y + 2);
+                y += headerFont.Height + 6;
+
+                if (fetchError != null)
+                {
+                    //g.DrawString($"Error: {fetchError.Message}", font, Brushes.Red, x + 2, y + 2);
+                    y += font.Height + 6;
+                }
+                else if (allEvents == null)
+                {
+                    g.DrawString("Downloading...", font, Brushes.Yellow, x + 2, y + 2);
+                    y += font.Height + 6;
+                }
+                else if (forexEvents == null)
+                {
+                    g.DrawString("Filtering...", font, Brushes.Yellow, x + 2, y + 2);
+                    y += font.Height + 6;
+                }
+                else
+                {
+                    g.DrawString($"Showing {forexEvents.Count} events", font, Brushes.Yellow, x + 2, y + 2);
+                    y += font.Height + 6;
+                }
+            }
+
+            // ✅ Event rendering section
+            if (forexEvents != null)
+            {
+                var conv = CurrentChart
+                    .Windows[args.WindowIndex]
+                    .CoordinatesConverter;
+
+                foreach (var ev in forexEvents.OrderBy(e => ParseEventDateTimeForSorting(e.Time)))
+                {
+                    // Pick line color
+                    Pen linePen =
+                        ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Pens.Red :
+                        ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Pens.Orange :
+                        ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Pens.Green :
+                        Pens.White;
+
+                    // Convert event time
+                    if (!ev.Time.Equals("All Day", StringComparison.OrdinalIgnoreCase)
+                        && DateTime.TryParseExact(ev.Time, "HH:mm", null, DateTimeStyles.None, out var dt))
+                    {
+                        DateTime eventDateTime = ev.Date.Date
+                            .AddHours(dt.Hour)
+                            .AddMinutes(dt.Minute);
+
+                        var estZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+                        bool isDst = estZone.IsDaylightSavingTime(eventDateTime);
+                        eventDateTime = ev.Date.Date
+                            .AddHours(dt.Hour)
+                            .AddMinutes(dt.Minute)
+                            .AddHours(4);
+
+                        if (showVerticalLines)
+                        {
+                            float xCoord = (float)conv.GetChartX(eventDateTime);
+                            g.DrawLine(linePen, xCoord, rect.Top, xCoord, rect.Bottom);
+                        }
+                    }
+
+                    // ✅ Only show text if enabled
+                    if (showNewsText)
+                    {
+                        Brush simpactBrush =
+                            ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
+                            ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
+                            ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
+                            Brushes.White;
+
+                        g.DrawString($"{ev.Time} {ev.Currency} ", font, Brushes.White, x + 2, y + 2);
+                        g.DrawString(ev.Event, font, simpactBrush, x + 100, y + 2);
+                        y += font.Height + 6;
+                    }
+                }
+            }
+        }
+
+
+
+        private DateTime ParseEventDateTimeForSorting(string timeString)
+        {
+            if (timeString.Equals("All Day", StringComparison.OrdinalIgnoreCase))
+                return DateTime.Today;
+            return DateTime.TryParseExact(timeString, "HH:mm", null, DateTimeStyles.None, out var dt)
+                ? DateTime.Today.AddHours(dt.Hour).AddMinutes(dt.Minute)
+                : DateTime.Today;
+        }
+
+        public override void Dispose()
+        {
+            font.Dispose();
+            base.Dispose();
+        }
+
+        public override IList<SettingItem> Settings
+        {
+            get
+            {
+                var settings = base.Settings;
+
+                var siCurrent = new SelectItem("Current Chart Date", 1);
+                var siCustom = new SelectItem("Custom Date", 2);
+
+                settings.Add(new SettingItemSelectorLocalized(
+                    "dateMode",
+                    new SelectItem("dateMode", dateMode),
+                    new List<SelectItem> { siCurrent, siCustom },
+                    0
+                )
+                { Text = "Select Date:" });
+
+                settings.Add(new SettingItemDateTime("customStartDate", customStartDate)
+                {
+                    Text = "From Date",
+                    Relation = new SettingItemRelationVisibility("dateMode", new object[] { siCustom })
+                });
+
+                settings.Add(new SettingItemDateTime("customEndDate", customEndDate)
+                {
+                    Text = "To Date",
+                    Relation = new SettingItemRelationVisibility("dateMode", new object[] { siCustom })
+                });
+
+                settings.Add(new SettingItemBoolean("highImpact", highImpact) { Text = "High Impact" });
+                settings.Add(new SettingItemBoolean("mediumImpact", mediumImpact) { Text = "Medium Impact" });
+                settings.Add(new SettingItemBoolean("lowImpact", lowImpact) { Text = "Low Impact" });
+                settings.Add(new SettingItemBoolean("nonEconomicNews", nonEconomicNews) { Text = "Non-Economic" });
+
+                var siAllCurrency = new SelectItem("All", 1);
+                var siSelectCurrency = new SelectItem("Select Currency", 2);
+                settings.Add(new SettingItemSelectorLocalized(
+                    "currencyMode",
+                    new SelectItem("currencyMode", currencyMode),
+                    new List<SelectItem> { siAllCurrency, siSelectCurrency },
+                    0
+                )
+                { Text = "Currency:" });
+
+                void addCurr(string prop, bool val)
+                {
+                    settings.Add(new SettingItemBoolean(prop, val)
+                    {
+                        Text = prop.Replace("Selected", ""),
+                        Relation = new SettingItemRelationVisibility("currencyMode", new object[] { siSelectCurrency })
+                    });
+                }
+
+                addCurr("usdSelected", usdSelected);
+                addCurr("eurSelected", eurSelected);
+                addCurr("audSelected", audSelected);
+                addCurr("cadSelected", cadSelected);
+                addCurr("chfSelected", chfSelected);
+                addCurr("cnySelected", cnySelected);
+                addCurr("gbpSelected", gbpSelected);
+                addCurr("jpySelected", jpySelected);
+                addCurr("nzdSelected", nzdSelected);
+
+                settings.Add(new SettingItemInteger("newsPositionX", newsPositionX) { Text = "Move Left/Right (-/+)" });
+                settings.Add(new SettingItemInteger("newsPositionY", newsPositionY) { Text = "Move Up/Down (-/+)" });
+
+                settings.Add(new SettingItemBoolean("showNewsText", showNewsText) { Text = "Show News Text" });
+                settings.Add(new SettingItemBoolean("showVerticalLines", showVerticalLines) { Text = "Show Vertical Lines" });
+
+
+                return settings;
+            }
+            set
+            {
+                if (SettingItemExtensions.TryGetValue<int>(value, "dateMode", out var dm)) dateMode = dm;
+                if (SettingItemExtensions.TryGetValue<DateTime>(value, "customStartDate", out var cs)) customStartDate = cs;
+                if (SettingItemExtensions.TryGetValue<DateTime>(value, "customEndDate", out var ce)) customEndDate = ce;
+
+                if (SettingItemExtensions.TryGetValue<bool>(value, "highImpact", out var hi)) highImpact = hi;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "mediumImpact", out var mi)) mediumImpact = mi;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "lowImpact", out var lo)) lowImpact = lo;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "nonEconomicNews", out var ne)) nonEconomicNews = ne;
+
+                if (SettingItemExtensions.TryGetValue<int>(value, "currencyMode", out var cm)) currencyMode = cm;
+
+                if (SettingItemExtensions.TryGetValue<bool>(value, "audSelected", out var a)) audSelected = a;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "cadSelected", out var c)) cadSelected = c;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "chfSelected", out var h)) chfSelected = h;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "cnySelected", out var y)) cnySelected = y;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "eurSelected", out var e)) eurSelected = e;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "gbpSelected", out var g)) gbpSelected = g;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "jpySelected", out var j)) jpySelected = j;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "nzdSelected", out var n)) nzdSelected = n;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "usdSelected", out var u)) usdSelected = u;
+
+                if (SettingItemExtensions.TryGetValue<int>(value, "newsPositionX", out var nx)) newsPositionX = nx;
+                if (SettingItemExtensions.TryGetValue<int>(value, "newsPositionY", out var ny)) newsPositionY = ny;
+
+                if (SettingItemExtensions.TryGetValue<bool>(value, "showNewsText", out var snt)) showNewsText = snt;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "showVerticalLines", out var svl)) showVerticalLines = svl;
+
+
+                ApplyFilters();
+            }
+        }
+
+        public class ForexEvent
+        {
+            public DateTime Date { get; set; }
+            public string Time { get; set; } = "";
+            public string Currency { get; set; } = "";
+            public string Event { get; set; } = "";
+            public string Impact { get; set; } = "";
+            public string? Forecast { get; set; }
+            public string? Previous { get; set; }
+        }
+    }
+}
