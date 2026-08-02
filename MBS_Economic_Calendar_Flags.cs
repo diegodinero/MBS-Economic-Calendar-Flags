@@ -58,6 +58,7 @@ namespace MBS_Economic_Calendar_Flags
         private Exception? fetchError;
         private Font font = new Font("Consolas", 10f);
         private Font boldFont = new Font("Consolas", 10f, FontStyle.Bold);
+        private Font headerFont = new Font("Consolas", 12f, FontStyle.Bold);
         private readonly object lockObject = new object();
         private int newsPositionX = 500;
         private int newsPositionY = 10;
@@ -93,6 +94,7 @@ namespace MBS_Economic_Calendar_Flags
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
         private const int FlagMarkerSize = 22;
         private const int FlagInnerPadding = 2;
+        private const int FlagImageSize = FlagMarkerSize - FlagInnerPadding * 2;
         private const int FlagStackSpacing = 4;
         private const int FlagBottomMargin = 2;
         private const int EventCardWidth = 235;
@@ -129,6 +131,7 @@ namespace MBS_Economic_Calendar_Flags
                     break;
             }
             boldFont = new Font(font.FontFamily, font.Size, FontStyle.Bold);
+            headerFont = new Font(font.FontFamily, 12f, FontStyle.Bold);
             _ = FetchDataOnce();
         }
 
@@ -255,7 +258,6 @@ namespace MBS_Economic_Calendar_Flags
             // ✅ Only show header + status messages if showNewsText = true
             if (showNewsText)
             {
-                var headerFont = new Font(font.FontFamily, 12f, FontStyle.Bold);
                 string header;
                 if (dateMode == 1)
                 {
@@ -516,6 +518,10 @@ namespace MBS_Economic_Calendar_Flags
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 graphics.FillEllipse(backgroundBrush, bounds);
                 graphics.SetClip(clipPath);
+                // Image is pre-scaled to FlagImageSize×FlagImageSize; use NearestNeighbor for
+                // a crisp, cost-free 1:1 blit. PixelOffsetMode.Half avoids half-pixel drift.
+                graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+                graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
                 graphics.DrawImage(flagImage, Rectangle.Inflate(bounds, -FlagInnerPadding, -FlagInnerPadding));
             }
             finally
@@ -559,6 +565,7 @@ namespace MBS_Economic_Calendar_Flags
         {
             font.Dispose();
             boldFont.Dispose();
+            headerFont.Dispose();
             base.Dispose();
         }
 
@@ -857,7 +864,7 @@ namespace MBS_Economic_Calendar_Flags
 
             using var stream = File.OpenRead(filePath);
             using var image = Image.FromStream(stream);
-            return new Bitmap(image);
+            return ScaleFlagImage(image);
         }
 
         private static Image? LoadEmbeddedFlagImage(string fileName)
@@ -869,7 +876,22 @@ namespace MBS_Economic_Calendar_Flags
                 return null;
 
             using var image = Image.FromStream(stream);
-            return new Bitmap(image);
+            return ScaleFlagImage(image);
+        }
+
+        /// <summary>
+        /// Scales a flag image to the exact display size using high-quality bicubic interpolation.
+        /// Pre-scaling once at load time avoids repeated scaling on every paint frame.
+        /// </summary>
+        private static Bitmap ScaleFlagImage(Image source)
+        {
+            var scaled = new Bitmap(FlagImageSize, FlagImageSize, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using var g = Graphics.FromImage(scaled);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+            g.SmoothingMode = SmoothingMode.HighQuality;
+            g.DrawImage(source, 0, 0, FlagImageSize, FlagImageSize);
+            return scaled;
         }
 
         private DateTime GetReferenceDateTimeUtc()
