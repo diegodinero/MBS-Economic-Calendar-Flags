@@ -102,8 +102,8 @@ namespace MBS_Economic_Calendar_Flags
         private const int NewsTableWidth = 560;
         private const int NewsDateColWidth = 110;
         private const int NewsTimeColWidth = 60;
-        private const int NewsCurrencyColWidth = 78;
-        private const int NewsImpactColWidth = 54;
+        private const int NewsCurrencyColWidth = 92;
+        private const int NewsImpactColWidth = 68;
         private const int NewsHeaderHeight = 24;
         private const int NewsRowHeight = 22;
         private const int NewsImpactCircleSize = 10;
