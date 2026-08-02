@@ -94,6 +94,8 @@ namespace MBS_Economic_Calendar_Flags
         private const int FlagInnerPadding = 2;
         private const int FlagStackSpacing = 4;
         private const int FlagBottomMargin = 2;
+        private const int EventCardWidth = 235;
+        private const int EventCardPadding = 6;
 
         //–– XML feed URL
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
@@ -263,6 +265,7 @@ namespace MBS_Economic_Calendar_Flags
                 {
                     g.DrawString($"Showing {forexEvents.Count} events", font, Brushes.Yellow, x + 2, y + 2);
                     y += font.Height + 6;
+                    DrawEventList(g, forexEvents.OrderBy(ParseEventDateTimeForSorting), x + 2, y, rect.Bottom);
                 }
             }
 
@@ -294,15 +297,25 @@ namespace MBS_Economic_Calendar_Flags
 
                 }
 
-                var hoveredEvent = DrawEventFlags(g, rect, eventTimeUtc => (float)conv.GetChartX(eventTimeUtc), args.MousePosition);
-                if (showNewsText && hoveredEvent != null)
+                var hoveredFlag = DrawEventFlags(g, rect, eventTimeUtc => (float)conv.GetChartX(eventTimeUtc), args.MousePosition);
+                if (showNewsText && hoveredFlag != null)
                 {
-                    DrawEventCard(g, hoveredEvent, x, y);
+                    int cardHeight = GetEventCardHeight();
+                    int cardX = hoveredFlag.MarkerBounds.Right + 8;
+                    int cardY = hoveredFlag.MarkerBounds.Top - (cardHeight / 2);
+
+                    if (cardX + EventCardWidth > rect.Right)
+                        cardX = hoveredFlag.MarkerBounds.Left - EventCardWidth - 8;
+
+                    cardX = Math.Max(rect.Left, Math.Min(cardX, rect.Right - EventCardWidth));
+                    cardY = Math.Max(rect.Top, Math.Min(cardY, rect.Bottom - cardHeight));
+
+                    DrawEventCard(g, hoveredFlag.Event, cardX, cardY);
                 }
             }
         }
 
-        private ForexEvent? DrawEventFlags(Graphics graphics, Rectangle rect, Func<DateTime, float> getChartX, Point mousePosition)
+        private HoveredFlagInfo? DrawEventFlags(Graphics graphics, Rectangle rect, Func<DateTime, float> getChartX, Point mousePosition)
         {
             if (forexEvents == null)
                 return null;
@@ -322,7 +335,7 @@ namespace MBS_Economic_Calendar_Flags
                 eventsAtTime.Add(ev);
             }
 
-            ForexEvent? hoveredEvent = null;
+            HoveredFlagInfo? hoveredEvent = null;
             foreach (var group in groupedEvents)
             {
                 float xCoord = getChartX(group.Key);
@@ -352,7 +365,7 @@ namespace MBS_Economic_Calendar_Flags
                         GetImpactColor(ev.Impact));
 
                     if (markerBounds.Contains(mousePosition))
-                        hoveredEvent = ev;
+                        hoveredEvent = new HoveredFlagInfo(ev, markerBounds);
 
                     stackIndex++;
                 }
@@ -361,11 +374,38 @@ namespace MBS_Economic_Calendar_Flags
             return hoveredEvent;
         }
 
+        private void DrawEventList(Graphics graphics, IEnumerable<ForexEvent> events, int x, int y, int bottom)
+        {
+            int cy = y;
+            foreach (var ev in events)
+            {
+                if (cy + font.Height > bottom)
+                    break;
+
+                Brush impactBrush =
+                    ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
+                    ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
+                    ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
+                    Brushes.White;
+
+                string eventLine = $"{ev.Time,-6} {NormalizeCurrencyCode(ev.Currency),-4} {ev.Event}";
+                graphics.DrawString(eventLine, font, impactBrush, x, cy);
+                cy += font.Height + 2;
+            }
+        }
+
+        private int GetEventCardHeight()
+        {
+            int lh = font.Height;
+            int blh = boldFont.Height;
+            return EventCardPadding + lh + 2 + blh + 2 + lh + 8 + lh + 2 + lh + EventCardPadding;
+        }
+
         private void DrawEventCard(Graphics graphics, ForexEvent ev, int x, int y)
         {
-            const int cardWidth = 235;
-            const int cardPad = 6;
-            const int colWidth = (cardWidth - cardPad * 2) / 3;
+            int cardWidth = EventCardWidth;
+            int cardPad = EventCardPadding;
+            int colWidth = (cardWidth - cardPad * 2) / 3;
 
             Brush impactBrush =
                 ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
@@ -375,7 +415,7 @@ namespace MBS_Economic_Calendar_Flags
 
             int lh = font.Height;
             int blh = boldFont.Height;
-            int cardHeight = cardPad + lh + 2 + blh + 2 + lh + 8 + lh + 2 + lh + cardPad;
+            int cardHeight = GetEventCardHeight();
 
             using (var bgBrush = new SolidBrush(Color.FromArgb(200, 35, 35, 35)))
                 graphics.FillRectangle(bgBrush, x, y, cardWidth, cardHeight);
@@ -405,6 +445,18 @@ namespace MBS_Economic_Calendar_Flags
             graphics.DrawString(string.IsNullOrEmpty(ev.Actual) ? "—" : ev.Actual, boldFont, Brushes.White, x + cardPad, cy);
             graphics.DrawString(string.IsNullOrEmpty(ev.Forecast) ? "—" : ev.Forecast, font, Brushes.White, x + cardPad + colWidth, cy);
             graphics.DrawString(string.IsNullOrEmpty(ev.Previous) ? "—" : ev.Previous, font, Brushes.White, x + cardPad + colWidth * 2, cy);
+        }
+
+        private sealed class HoveredFlagInfo
+        {
+            public HoveredFlagInfo(ForexEvent ev, Rectangle markerBounds)
+            {
+                Event = ev;
+                MarkerBounds = markerBounds;
+            }
+
+            public ForexEvent Event { get; }
+            public Rectangle MarkerBounds { get; }
         }
 
         private static void DrawFlagMarker(Graphics graphics, Image flagImage, Rectangle bounds, Color impactColor)
