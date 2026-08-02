@@ -80,7 +80,7 @@ namespace MBS_Economic_Calendar_Flags
         private const int FlagMarkerSize = 22;
         private const int FlagInnerPadding = 2;
         private const int FlagStackSpacing = 4;
-        private const int FlagBottomMargin = 14;
+        private const int FlagBottomMargin = 2;
 
         //–– XML feed URL
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
