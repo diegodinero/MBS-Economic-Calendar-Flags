@@ -99,11 +99,11 @@ namespace MBS_Economic_Calendar_Flags
         private const int FlagBottomMargin = 2;
         private const int EventCardWidth = 235;
         private const int EventCardPadding = 6;
-        private const int NewsTableWidth = 520;
+        private const int NewsTableWidth = 560;
         private const int NewsDateColWidth = 110;
         private const int NewsTimeColWidth = 60;
-        private const int NewsCurrencyColWidth = 60;
-        private const int NewsImpactColWidth = 36;
+        private const int NewsCurrencyColWidth = 78;
+        private const int NewsImpactColWidth = 54;
         private const int NewsHeaderHeight = 24;
         private const int NewsRowHeight = 22;
         private const int NewsImpactCircleSize = 10;
@@ -475,7 +475,8 @@ namespace MBS_Economic_Calendar_Flags
             int cy = y + headerHeight;
             foreach (var group in groups)
             {
-                int groupHeight = group.Count() * rowHeight;
+                var groupEvents = group.ToList();
+                int groupHeight = groupEvents.Count * rowHeight;
                 if (cy + groupHeight > bottom)
                     break;
 
@@ -491,15 +492,17 @@ namespace MBS_Economic_Calendar_Flags
                     FormatFlags = StringFormatFlags.NoWrap
                 })
                 {
-                    graphics.DrawString(group.Key.ToString("ddd MMM dd", CultureInfo.InvariantCulture), headerFont, Brushes.Cyan, new RectangleF(x + 2, cy, dateColWidth - 4, groupHeight), format);
+                    graphics.DrawString(group.Key.ToString("ddd MMM dd", CultureInfo.InvariantCulture), font, Brushes.Gainsboro, new RectangleF(x + 2, cy, dateColWidth - 4, groupHeight), format);
                 }
 
-                foreach (var ev in group)
+                for (int i = 0; i < groupEvents.Count; i++)
                 {
+                    var ev = groupEvents[i];
                     if (cy + rowHeight > bottom)
                         return;
 
-                    DrawEventRow(graphics, ev, x, cy, dateColWidth, timeColWidth, currencyColWidth, impactColWidth, newsColWidth, rowHeight, tableRight, gridPen);
+                    bool isLastInGroup = i == groupEvents.Count - 1;
+                    DrawEventRow(graphics, ev, x, cy, dateColWidth, timeColWidth, currencyColWidth, impactColWidth, newsColWidth, rowHeight, tableRight, gridPen, isLastInGroup);
                     cy += rowHeight;
                 }
             }
@@ -541,7 +544,7 @@ namespace MBS_Economic_Calendar_Flags
             graphics.DrawString(text, headerFont, Brushes.White, new RectangleF(x + 2, y, width - 4, height), format);
         }
 
-        private void DrawEventRow(Graphics graphics, ForexEvent ev, int x, int y, int dateColWidth, int timeColWidth, int currencyColWidth, int impactColWidth, int newsColWidth, int rowHeight, int tableRight, Pen gridPen)
+        private void DrawEventRow(Graphics graphics, ForexEvent ev, int x, int y, int dateColWidth, int timeColWidth, int currencyColWidth, int impactColWidth, int newsColWidth, int rowHeight, int tableRight, Pen gridPen, bool drawFullWidthSeparator)
         {
             using var rowBg = new SolidBrush(Color.FromArgb(255, 62, 67, 88));
             graphics.FillRectangle(rowBg, x + dateColWidth, y, tableRight - (x + dateColWidth), rowHeight);
@@ -562,7 +565,7 @@ namespace MBS_Economic_Calendar_Flags
             graphics.DrawLine(gridPen, cx, y, cx, y + rowHeight);
 
             DrawCellText(graphics, ev.Event, font, Brushes.Gainsboro, cx, y, newsColWidth, rowHeight, StringAlignment.Near);
-            graphics.DrawLine(gridPen, x, y + rowHeight, tableRight, y + rowHeight);
+            graphics.DrawLine(gridPen, drawFullWidthSeparator ? x : x + dateColWidth, y + rowHeight, tableRight, y + rowHeight);
         }
 
         private void DrawCellText(Graphics graphics, string text, Font textFont, Brush brush, int x, int y, int width, int height, StringAlignment alignment)
