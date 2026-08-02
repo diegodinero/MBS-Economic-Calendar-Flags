@@ -454,7 +454,7 @@ namespace MBS_Economic_Calendar_Flags
             int blh = boldFont.Height;
             int cardHeight = GetEventCardHeight();
 
-            using (var bgBrush = new SolidBrush(Color.FromArgb(200, 35, 35, 35)))
+            using (var bgBrush = new SolidBrush(Color.FromArgb(255, 35, 35, 35)))
                 graphics.FillRectangle(bgBrush, x, y, cardWidth, cardHeight);
             using (var borderPen = new Pen(Color.FromArgb(100, 150, 150, 150), 1f))
                 graphics.DrawRectangle(borderPen, x, y, cardWidth - 1, cardHeight - 1);
