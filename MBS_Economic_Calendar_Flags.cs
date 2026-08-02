@@ -125,7 +125,6 @@ namespace MBS_Economic_Calendar_Flags
                 if (font.Name == fam)
                     break;
             }
-            boldFont.Dispose();
             boldFont = new Font(font.FontFamily, font.Size, FontStyle.Bold);
             _ = FetchDataOnce();
         }
