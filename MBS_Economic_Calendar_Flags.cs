@@ -99,13 +99,14 @@ namespace MBS_Economic_Calendar_Flags
         private const int FlagBottomMargin = 2;
         private const int EventCardWidth = 235;
         private const int EventCardPadding = 6;
-        private const int NewsTableWidth = 408;
-        private const int NewsDateColWidth = 72;
-        private const int NewsTimeColWidth = 52;
-        private const int NewsCurrencyColWidth = 58;
-        private const int NewsImpactColWidth = 54;
-        private const int NewsHeaderHeight = 22;
-        private const int NewsRowHeight = 18;
+        private const int NewsTableWidth = 520;
+        private const int NewsDateColWidth = 110;
+        private const int NewsTimeColWidth = 60;
+        private const int NewsCurrencyColWidth = 60;
+        private const int NewsImpactColWidth = 36;
+        private const int NewsHeaderHeight = 24;
+        private const int NewsRowHeight = 22;
+        private const int NewsImpactCircleSize = 10;
 
         //–– XML feed URL
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
@@ -136,7 +137,7 @@ namespace MBS_Economic_Calendar_Flags
             Font? selectedFont = null;
             foreach (var fam in new[] { "Droid Sans Mono", "DejaVu Sans Mono", "Consolas", "Verdana" })
             {
-                var test = new Font(fam, 10f);
+                var test = new Font(fam, 11f);
                 if (test.Name == fam)
                 {
                     selectedFont = test;
@@ -144,10 +145,10 @@ namespace MBS_Economic_Calendar_Flags
                 }
                 test.Dispose();
             }
-            selectedFont ??= new Font("Consolas", 10f);
+            selectedFont ??= new Font("Consolas", 11f);
 
             var newBold   = new Font(selectedFont.FontFamily, selectedFont.Size, FontStyle.Bold);
-            var newHeader = new Font(selectedFont.FontFamily, 12f, FontStyle.Bold);
+            var newHeader = new Font(selectedFont.FontFamily, 13f, FontStyle.Bold);
 
             font       = selectedFont;
             boldFont   = newBold;
@@ -461,7 +462,6 @@ namespace MBS_Economic_Calendar_Flags
 
             using var tableBg = new SolidBrush(Color.FromArgb(255, 40, 45, 65));
             using var headerBg = new SolidBrush(Color.FromArgb(255, 47, 73, 132));
-            using var groupBg = new SolidBrush(Color.FromArgb(255, 52, 58, 80));
             using var dateCellBg = new SolidBrush(Color.FromArgb(255, 50, 56, 78));
             using var borderPen = new Pen(Color.FromArgb(255, 25, 30, 45), 1f);
             using var gridPen = new Pen(Color.FromArgb(140, 160, 160, 160), 1f);
@@ -543,12 +543,6 @@ namespace MBS_Economic_Calendar_Flags
 
         private void DrawEventRow(Graphics graphics, ForexEvent ev, int x, int y, int dateColWidth, int timeColWidth, int currencyColWidth, int impactColWidth, int newsColWidth, int rowHeight, int tableRight, Pen gridPen)
         {
-            Brush impactBrush =
-                ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
-                ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
-                ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
-                Brushes.White;
-
             using var rowBg = new SolidBrush(Color.FromArgb(255, 62, 67, 88));
             graphics.FillRectangle(rowBg, x + dateColWidth, y, tableRight - (x + dateColWidth), rowHeight);
 
@@ -563,7 +557,7 @@ namespace MBS_Economic_Calendar_Flags
             cx += currencyColWidth;
             graphics.DrawLine(gridPen, cx, y, cx, y + rowHeight);
 
-            DrawCellText(graphics, ev.Impact, font, impactBrush, cx, y, impactColWidth, rowHeight, StringAlignment.Center);
+            DrawImpactCircle(graphics, GetImpactColor(ev.Impact), cx, y, impactColWidth, rowHeight);
             cx += impactColWidth;
             graphics.DrawLine(gridPen, cx, y, cx, y + rowHeight);
 
@@ -583,6 +577,26 @@ namespace MBS_Economic_Calendar_Flags
 
             var rect = new RectangleF(x + 4, y, Math.Max(1, width - 8), height);
             graphics.DrawString(text, textFont, brush, rect, format);
+        }
+
+        private void DrawImpactCircle(Graphics graphics, Color color, int x, int y, int width, int height)
+        {
+            int size = Math.Min(NewsImpactCircleSize, Math.Min(width - 6, height - 6));
+            int cx = x + (width - size) / 2;
+            int cy = y + (height - size) / 2;
+            var state = graphics.Save();
+            try
+            {
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var fillBrush = new SolidBrush(color);
+                using var borderPen = new Pen(Color.FromArgb(200, Color.Black), 1f);
+                graphics.FillEllipse(fillBrush, cx, cy, size, size);
+                graphics.DrawEllipse(borderPen, cx, cy, size, size);
+            }
+            finally
+            {
+                graphics.Restore(state);
+            }
         }
 
         private int GetEventCardHeight()
