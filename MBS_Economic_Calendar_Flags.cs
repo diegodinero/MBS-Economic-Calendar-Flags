@@ -56,12 +56,25 @@ namespace MBS_Economic_Calendar_Flags
         private List<ForexEvent>? forexEvents;
         private Exception? fetchError;
         private Font font = new Font("Consolas", 10f);
+        private Font boldFont = new Font("Consolas", 10f, FontStyle.Bold);
         private readonly object lockObject = new object();
         private int newsPositionX = 500;
         private int newsPositionY = 10;
         private static readonly TimeZoneInfo EasternTimeZone = ResolveEasternTimeZone();
         private static readonly SemaphoreSlim CacheSemaphore = new SemaphoreSlim(1, 1);
         private static readonly ConcurrentDictionary<string, Image?> FlagImageCache = new ConcurrentDictionary<string, Image?>(StringComparer.OrdinalIgnoreCase);
+        private static readonly IReadOnlyDictionary<string, string> CurrencyCountryNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["AUD"] = "Australia",
+            ["CAD"] = "Canada",
+            ["CHF"] = "Switzerland",
+            ["CNY"] = "China",
+            ["EUR"] = "Euro Zone",
+            ["GBP"] = "United Kingdom",
+            ["JPY"] = "Japan",
+            ["NZD"] = "New Zealand",
+            ["USD"] = "United States"
+        };
         private static readonly IReadOnlyDictionary<string, string> CurrencyFlagFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["AUD"] = "australia.png",
@@ -112,6 +125,8 @@ namespace MBS_Economic_Calendar_Flags
                 if (font.Name == fam)
                     break;
             }
+            boldFont.Dispose();
+            boldFont = new Font(font.FontFamily, font.Size, FontStyle.Bold);
             _ = FetchDataOnce();
         }
 
@@ -281,15 +296,56 @@ namespace MBS_Economic_Calendar_Flags
                     // ✅ Only show text if enabled
                     if (showNewsText)
                     {
-                        Brush simpactBrush =
+                        const int cardWidth = 235;
+                        const int cardPad = 6;
+                        const int colWidth = (cardWidth - cardPad * 2) / 3;
+
+                        Brush impactBrush =
                             ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
                             ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
                             ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
                             Brushes.White;
 
-                        g.DrawString($"{ev.Time} {ev.Currency} ", font, Brushes.White, x + 2, y + 2);
-                        g.DrawString(ev.Event, font, simpactBrush, x + 100, y + 2);
-                        y += font.Height + 6;
+                        int lh = font.Height;
+                        int blh = boldFont.Height;
+                        int cardHeight = cardPad + lh + 2 + blh + 2 + lh + 8 + lh + 2 + lh + cardPad;
+
+                        using (var bgBrush = new SolidBrush(Color.FromArgb(200, 35, 35, 35)))
+                            g.FillRectangle(bgBrush, x, y, cardWidth, cardHeight);
+                        using (var borderPen = new Pen(Color.FromArgb(100, 150, 150, 150), 1f))
+                            g.DrawRectangle(borderPen, x, y, cardWidth - 1, cardHeight - 1);
+
+                        int cy = y + cardPad;
+
+                        // Country, Currency
+                        g.DrawString(GetCountryDisplayName(ev.Currency), font, Brushes.DarkGray, x + cardPad, cy);
+                        cy += lh + 2;
+
+                        // Event name (bold, impact color)
+                        g.DrawString(ev.Event, boldFont, impactBrush, x + cardPad, cy);
+                        cy += blh + 2;
+
+                        // Date and time
+                        string dateTimeStr = ev.Date.ToString("dd MMM yy", CultureInfo.InvariantCulture) + "   " + ev.Time;
+                        g.DrawString(dateTimeStr, font, Brushes.DarkGray, x + cardPad, cy);
+                        cy += lh + 4;
+
+                        // Separator line
+                        g.DrawLine(Pens.DimGray, x + cardPad, cy, x + cardWidth - cardPad, cy);
+                        cy += 4;
+
+                        // Column headers
+                        g.DrawString("Actual", font, Brushes.DarkGray, x + cardPad, cy);
+                        g.DrawString("Forecast", font, Brushes.DarkGray, x + cardPad + colWidth, cy);
+                        g.DrawString("Previous", font, Brushes.DarkGray, x + cardPad + colWidth * 2, cy);
+                        cy += lh + 2;
+
+                        // Values
+                        g.DrawString(string.IsNullOrEmpty(ev.Actual) ? "—" : ev.Actual, boldFont, Brushes.White, x + cardPad, cy);
+                        g.DrawString(string.IsNullOrEmpty(ev.Forecast) ? "—" : ev.Forecast, font, Brushes.White, x + cardPad + colWidth, cy);
+                        g.DrawString(string.IsNullOrEmpty(ev.Previous) ? "—" : ev.Previous, font, Brushes.White, x + cardPad + colWidth * 2, cy);
+
+                        y += cardHeight + 6;
                     }
                 }
 
@@ -383,6 +439,14 @@ namespace MBS_Economic_Calendar_Flags
             impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? 2 :
             3;
 
+        private static string GetCountryDisplayName(string currency)
+        {
+            var normalized = NormalizeCurrencyCode(currency);
+            return CurrencyCountryNames.TryGetValue(normalized, out var country)
+                ? $"{country}, {normalized}"
+                : normalized;
+        }
+
 
         private static DateTime ParseEventDateTimeForSorting(ForexEvent forexEvent)
         {
@@ -395,6 +459,7 @@ namespace MBS_Economic_Calendar_Flags
         public override void Dispose()
         {
             font.Dispose();
+            boldFont.Dispose();
             base.Dispose();
         }
 
@@ -603,6 +668,7 @@ namespace MBS_Economic_Calendar_Flags
                         Currency = x.Element("country")!.Value.Trim(),
                         Event = x.Element("title")!.Value.Trim(),
                         Impact = x.Element("impact")!.Value.Trim(),
+                        Actual = x.Element("actual")?.Value.Trim(),
                         Forecast = x.Element("forecast")?.Value.Trim(),
                         Previous = x.Element("previous")?.Value.Trim(),
                     };
@@ -620,6 +686,7 @@ namespace MBS_Economic_Calendar_Flags
                     Currency = ev.Currency,
                     Event = ev.Event,
                     Impact = ev.Impact,
+                    Actual = ev.Actual,
                     Forecast = ev.Forecast,
                     Previous = ev.Previous,
                 })
@@ -743,6 +810,7 @@ namespace MBS_Economic_Calendar_Flags
             public string Currency { get; set; } = "";
             public string Event { get; set; } = "";
             public string Impact { get; set; } = "";
+            public string? Actual { get; set; }
             public string? Forecast { get; set; }
             public string? Previous { get; set; }
         }
