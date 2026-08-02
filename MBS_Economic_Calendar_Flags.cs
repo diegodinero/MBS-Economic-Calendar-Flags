@@ -322,7 +322,7 @@ namespace MBS_Economic_Calendar_Flags
                 {
                     g.DrawString($"Showing {forexEvents.Count} events", font, Brushes.Yellow, x + 2, y + 2);
                     y += font.Height + 6;
-                    DrawEventList(g, forexEvents.OrderBy(ParseEventDateTimeForSorting), x + 2, y, rect.Right, rect.Bottom);
+                    DrawNewsTable(g, forexEvents.OrderBy(ParseEventDateTimeForSorting), x + 2, y, rect.Right, rect.Bottom);
                 }
             }
 
@@ -427,47 +427,152 @@ namespace MBS_Economic_Calendar_Flags
             return hoveredEvent;
         }
 
-        private void DrawEventList(Graphics graphics, IEnumerable<ForexEvent> events, int x, int y, int right, int bottom)
+        private void DrawNewsTable(Graphics graphics, IEnumerable<ForexEvent> events, int x, int y, int right, int bottom)
         {
-            int cy = y;
-            DateTime? currentDate = null;
-            foreach (var ev in events)
+            var groups = events.GroupBy(ev => ev.Date.Date).ToList();
+            if (groups.Count == 0)
+                return;
+
+            int tableRight = right - 4;
+            int tableWidth = tableRight - x;
+            if (tableWidth <= 0)
+                return;
+
+            int dateColWidth = 72;
+            int timeColWidth = 52;
+            int currencyColWidth = 58;
+            int impactColWidth = 56;
+            int newsColWidth = Math.Max(120, tableWidth - dateColWidth - timeColWidth - currencyColWidth - impactColWidth);
+            int headerHeight = headerFont.Height + 8;
+            int rowHeight = font.Height + 6;
+
+            using var tableBg = new SolidBrush(Color.FromArgb(255, 40, 45, 65));
+            using var headerBg = new SolidBrush(Color.FromArgb(255, 47, 73, 132));
+            using var groupBg = new SolidBrush(Color.FromArgb(255, 52, 58, 80));
+            using var borderPen = new Pen(Color.FromArgb(255, 25, 30, 45), 1f);
+            using var gridPen = new Pen(Color.FromArgb(140, 160, 160, 160), 1f);
+            using var separatorPen = new Pen(Color.FromArgb(255, 112, 112, 112), 1f);
+
+            int estimatedHeight = headerHeight + groups.Sum(group => headerHeight + group.Count() * rowHeight);
+            int tableBottom = Math.Min(bottom, y + estimatedHeight);
+            graphics.FillRectangle(tableBg, x, y, tableWidth, Math.Max(1, tableBottom - y));
+            graphics.DrawRectangle(borderPen, x, y, tableWidth - 1, Math.Max(0, tableBottom - y - 1));
+
+            DrawTableHeader(graphics, x, y, dateColWidth, timeColWidth, currencyColWidth, impactColWidth, newsColWidth, headerHeight, tableRight, headerBg, gridPen);
+
+            int cy = y + headerHeight;
+            foreach (var group in groups)
             {
-                var eventDate = ev.Date.Date;
-                if (currentDate == null || currentDate.Value != eventDate)
-                {
-                    int separatorHeight = headerFont.Height + 6;
-                    if (cy + separatorHeight > bottom)
-                        break;
-
-                    DrawDaySeparator(graphics, eventDate, x, cy, right);
-                    cy += separatorHeight;
-                    currentDate = eventDate;
-                }
-
-                if (cy + font.Height > bottom)
+                if (cy + headerHeight > bottom)
                     break;
 
-                Brush impactBrush =
-                    ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
-                    ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
-                    ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
-                    Brushes.White;
+                DrawDaySeparator(graphics, group.Key, x, cy, tableWidth, headerHeight, groupBg, separatorPen);
+                cy += headerHeight;
 
-                string eventLine = $"{ev.Time,-6} {NormalizeCurrencyCode(ev.Currency),-4} {ev.Event}";
-                graphics.DrawString(eventLine, font, impactBrush, x, cy);
-                cy += font.Height + 2;
+                bool firstRow = true;
+                foreach (var ev in group)
+                {
+                    if (cy + rowHeight > bottom)
+                        return;
+
+                    DrawEventRow(graphics, ev, x, cy, dateColWidth, timeColWidth, currencyColWidth, impactColWidth, newsColWidth, rowHeight, tableRight, firstRow, gridPen);
+                    cy += rowHeight;
+                    firstRow = false;
+                }
             }
         }
 
-        private void DrawDaySeparator(Graphics graphics, DateTime date, int x, int y, int right)
+        private void DrawTableHeader(Graphics graphics, int x, int y, int dateColWidth, int timeColWidth, int currencyColWidth, int impactColWidth, int newsColWidth, int headerHeight, int tableRight, Brush headerBg, Pen gridPen)
         {
-            string label = date.ToString("dddd, dd MMM yyyy", CultureInfo.InvariantCulture);
-            int textY = y;
-            int lineY = y + headerFont.Height / 2 + 1;
+            graphics.FillRectangle(headerBg, x, y, tableRight - x, headerHeight);
+            graphics.DrawLine(gridPen, x, y + headerHeight, tableRight, y + headerHeight);
 
-            graphics.DrawString(label, headerFont, Brushes.Cyan, x, textY);
-            graphics.DrawLine(Pens.DimGray, x, lineY, right - 4, lineY);
+            int cx = x;
+            DrawHeaderCell(graphics, "Date", cx, y, dateColWidth, headerHeight);
+            cx += dateColWidth;
+            graphics.DrawLine(gridPen, cx, y, cx, y + headerHeight);
+
+            DrawHeaderCell(graphics, "Time", cx, y, timeColWidth, headerHeight);
+            cx += timeColWidth;
+            graphics.DrawLine(gridPen, cx, y, cx, y + headerHeight);
+
+            DrawHeaderCell(graphics, "Currency", cx, y, currencyColWidth, headerHeight);
+            cx += currencyColWidth;
+            graphics.DrawLine(gridPen, cx, y, cx, y + headerHeight);
+
+            DrawHeaderCell(graphics, "Impact", cx, y, impactColWidth, headerHeight);
+            cx += impactColWidth;
+            graphics.DrawLine(gridPen, cx, y, cx, y + headerHeight);
+
+            DrawHeaderCell(graphics, "Forex Factory News", cx, y, newsColWidth, headerHeight);
+        }
+
+        private void DrawHeaderCell(Graphics graphics, string text, int x, int y, int width, int height)
+        {
+            using var format = new StringFormat
+            {
+                Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Center,
+                Trimming = StringTrimming.EllipsisCharacter
+            };
+            graphics.DrawString(text, headerFont, Brushes.White, new RectangleF(x + 2, y, width - 4, height), format);
+        }
+
+        private void DrawEventRow(Graphics graphics, ForexEvent ev, int x, int y, int dateColWidth, int timeColWidth, int currencyColWidth, int impactColWidth, int newsColWidth, int rowHeight, int tableRight, bool showDate, Pen gridPen)
+        {
+            Brush impactBrush =
+                ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
+                ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
+                ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
+                Brushes.White;
+
+            int cx = x;
+            DrawCellText(graphics, showDate ? ev.Date.ToString("ddd MMM dd", CultureInfo.InvariantCulture) : string.Empty, font, Brushes.LightGray, cx, y, dateColWidth, rowHeight, StringAlignment.Center);
+            cx += dateColWidth;
+            graphics.DrawLine(gridPen, cx, y, cx, y + rowHeight);
+
+            DrawCellText(graphics, ev.Time, font, Brushes.Gainsboro, cx, y, timeColWidth, rowHeight, StringAlignment.Center);
+            cx += timeColWidth;
+            graphics.DrawLine(gridPen, cx, y, cx, y + rowHeight);
+
+            DrawCellText(graphics, NormalizeCurrencyCode(ev.Currency), font, Brushes.Gainsboro, cx, y, currencyColWidth, rowHeight, StringAlignment.Center);
+            cx += currencyColWidth;
+            graphics.DrawLine(gridPen, cx, y, cx, y + rowHeight);
+
+            DrawCellText(graphics, ev.Impact, font, impactBrush, cx, y, impactColWidth, rowHeight, StringAlignment.Center);
+            cx += impactColWidth;
+            graphics.DrawLine(gridPen, cx, y, cx, y + rowHeight);
+
+            DrawCellText(graphics, ev.Event, font, Brushes.Gainsboro, cx, y, newsColWidth, rowHeight, StringAlignment.Near);
+            graphics.DrawLine(gridPen, x, y + rowHeight, tableRight, y + rowHeight);
+        }
+
+        private void DrawCellText(Graphics graphics, string text, Font textFont, Brush brush, int x, int y, int width, int height, StringAlignment alignment)
+        {
+            using var format = new StringFormat
+            {
+                Alignment = alignment,
+                LineAlignment = StringAlignment.Center,
+                Trimming = StringTrimming.EllipsisCharacter
+            };
+
+            var rect = new RectangleF(x + 4, y, Math.Max(1, width - 8), height);
+            graphics.DrawString(text, textFont, brush, rect, format);
+        }
+
+        private void DrawDaySeparator(Graphics graphics, DateTime date, int x, int y, int width, int height, Brush backgroundBrush, Pen separatorPen)
+        {
+            graphics.FillRectangle(backgroundBrush, x, y, width, height);
+            graphics.DrawLine(separatorPen, x, y, x + width, y);
+
+            string label = date.ToString("dddd, MMM dd", CultureInfo.InvariantCulture);
+            using var format = new StringFormat
+            {
+                Alignment = StringAlignment.Near,
+                LineAlignment = StringAlignment.Center
+            };
+
+            graphics.DrawString(label, headerFont, Brushes.Cyan, new RectangleF(x + 6, y, width - 12, height), format);
         }
 
         private int GetEventCardHeight()
