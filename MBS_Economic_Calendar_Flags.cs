@@ -459,6 +459,13 @@ namespace MBS_Economic_Calendar_Flags
             using (var borderPen = new Pen(Color.FromArgb(100, 150, 150, 150), 1f))
                 graphics.DrawRectangle(borderPen, x, y, cardWidth - 1, cardHeight - 1);
 
+            // Draw vertical colored bar on the left side matching the impact color
+            float barX = x;
+            float barWidth = 3;
+            float barHeight = cardHeight;
+            float barY = y;
+            graphics.FillRectangle(impactBrush, barX, barY, barWidth, barHeight);
+
             int cy = y + cardPad;
 
             graphics.DrawString(GetCountryDisplayName(ev.Currency), font, Brushes.DarkGray, x + cardPad, cy);
