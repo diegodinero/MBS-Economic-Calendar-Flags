@@ -48,6 +48,7 @@ namespace MBS_Economic_Calendar_Flags
 
         private bool showNewsText = true;
         private bool showVerticalLines = true;
+        private bool showHoverInfo = true;
         private bool showPastEvents = false;
 
 
@@ -56,12 +57,25 @@ namespace MBS_Economic_Calendar_Flags
         private List<ForexEvent>? forexEvents;
         private Exception? fetchError;
         private Font font = new Font("Consolas", 10f);
+        private Font boldFont = new Font("Consolas", 10f, FontStyle.Bold);
         private readonly object lockObject = new object();
         private int newsPositionX = 500;
         private int newsPositionY = 10;
         private static readonly TimeZoneInfo EasternTimeZone = ResolveEasternTimeZone();
         private static readonly SemaphoreSlim CacheSemaphore = new SemaphoreSlim(1, 1);
         private static readonly ConcurrentDictionary<string, Image?> FlagImageCache = new ConcurrentDictionary<string, Image?>(StringComparer.OrdinalIgnoreCase);
+        private static readonly IReadOnlyDictionary<string, string> CurrencyCountryNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["AUD"] = "Australia",
+            ["CAD"] = "Canada",
+            ["CHF"] = "Switzerland",
+            ["CNY"] = "China",
+            ["EUR"] = "Euro Zone",
+            ["GBP"] = "United Kingdom",
+            ["JPY"] = "Japan",
+            ["NZD"] = "New Zealand",
+            ["USD"] = "United States"
+        };
         private static readonly IReadOnlyDictionary<string, string> CurrencyFlagFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["AUD"] = "australia.png",
@@ -81,6 +95,8 @@ namespace MBS_Economic_Calendar_Flags
         private const int FlagInnerPadding = 2;
         private const int FlagStackSpacing = 4;
         private const int FlagBottomMargin = 2;
+        private const int EventCardWidth = 235;
+        private const int EventCardPadding = 6;
 
         //–– XML feed URL
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
@@ -112,6 +128,7 @@ namespace MBS_Economic_Calendar_Flags
                 if (font.Name == fam)
                     break;
             }
+            boldFont = new Font(font.FontFamily, font.Size, FontStyle.Bold);
             _ = FetchDataOnce();
         }
 
@@ -249,6 +266,7 @@ namespace MBS_Economic_Calendar_Flags
                 {
                     g.DrawString($"Showing {forexEvents.Count} events", font, Brushes.Yellow, x + 2, y + 2);
                     y += font.Height + 6;
+                    DrawEventList(g, forexEvents.OrderBy(ParseEventDateTimeForSorting), x + 2, y, rect.Bottom);
                 }
             }
 
@@ -278,29 +296,26 @@ namespace MBS_Economic_Calendar_Flags
                         }
                     }
 
-                    // ✅ Only show text if enabled
-                    if (showNewsText)
-                    {
-                        Brush simpactBrush =
-                            ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
-                            ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
-                            ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
-                            Brushes.White;
-
-                        g.DrawString($"{ev.Time} {ev.Currency} ", font, Brushes.White, x + 2, y + 2);
-                        g.DrawString(ev.Event, font, simpactBrush, x + 100, y + 2);
-                        y += font.Height + 6;
-                    }
                 }
 
-                DrawEventFlags(g, rect, eventTimeUtc => (float)conv.GetChartX(eventTimeUtc));
+                var hoveredFlag = DrawEventFlags(g, rect, eventTimeUtc => (float)conv.GetChartX(eventTimeUtc), args.MousePosition);
+                if (showHoverInfo && hoveredFlag != null)
+                {
+                    int cardHeight = GetEventCardHeight();
+                    int cardX = hoveredFlag.MarkerBounds.Right + 8;
+                    int cardY = hoveredFlag.MarkerBounds.Top - (cardHeight / 2);
+
+                    cardY = Math.Max(rect.Top, Math.Min(cardY, rect.Bottom - cardHeight));
+
+                    DrawEventCard(g, hoveredFlag.Event, cardX, cardY);
+                }
             }
         }
 
-        private void DrawEventFlags(Graphics graphics, Rectangle rect, Func<DateTime, float> getChartX)
+        private HoveredFlagInfo? DrawEventFlags(Graphics graphics, Rectangle rect, Func<DateTime, float> getChartX, Point mousePosition)
         {
             if (forexEvents == null)
-                return;
+                return null;
 
             var groupedEvents = new SortedDictionary<DateTime, List<ForexEvent>>();
             foreach (var ev in forexEvents)
@@ -317,6 +332,7 @@ namespace MBS_Economic_Calendar_Flags
                 eventsAtTime.Add(ev);
             }
 
+            HoveredFlagInfo? hoveredEvent = null;
             foreach (var group in groupedEvents)
             {
                 float xCoord = getChartX(group.Key);
@@ -338,14 +354,106 @@ namespace MBS_Economic_Calendar_Flags
                     if (drawY < rect.Top)
                         break;
 
+                    var markerBounds = new Rectangle(drawX, drawY, FlagMarkerSize, FlagMarkerSize);
                     DrawFlagMarker(
                         graphics,
                         flagImage,
-                        new Rectangle(drawX, drawY, FlagMarkerSize, FlagMarkerSize),
+                        markerBounds,
                         GetImpactColor(ev.Impact));
+
+                    if (markerBounds.Contains(mousePosition))
+                        hoveredEvent = new HoveredFlagInfo(ev, markerBounds);
+
                     stackIndex++;
                 }
             }
+
+            return hoveredEvent;
+        }
+
+        private void DrawEventList(Graphics graphics, IEnumerable<ForexEvent> events, int x, int y, int bottom)
+        {
+            int cy = y;
+            foreach (var ev in events)
+            {
+                if (cy + font.Height > bottom)
+                    break;
+
+                Brush impactBrush =
+                    ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
+                    ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
+                    ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
+                    Brushes.White;
+
+                string eventLine = $"{ev.Time,-6} {NormalizeCurrencyCode(ev.Currency),-4} {ev.Event}";
+                graphics.DrawString(eventLine, font, impactBrush, x, cy);
+                cy += font.Height + 2;
+            }
+        }
+
+        private int GetEventCardHeight()
+        {
+            int lh = font.Height;
+            int blh = boldFont.Height;
+            return EventCardPadding + lh + 2 + blh + 2 + lh + 8 + lh + 2 + lh + EventCardPadding;
+        }
+
+        private void DrawEventCard(Graphics graphics, ForexEvent ev, int x, int y)
+        {
+            int cardWidth = EventCardWidth;
+            int cardPad = EventCardPadding;
+            int colWidth = (cardWidth - cardPad * 2) / 3;
+
+            Brush impactBrush =
+                ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
+                ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
+                ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
+                Brushes.White;
+
+            int lh = font.Height;
+            int blh = boldFont.Height;
+            int cardHeight = GetEventCardHeight();
+
+            using (var bgBrush = new SolidBrush(Color.FromArgb(200, 35, 35, 35)))
+                graphics.FillRectangle(bgBrush, x, y, cardWidth, cardHeight);
+            using (var borderPen = new Pen(Color.FromArgb(100, 150, 150, 150), 1f))
+                graphics.DrawRectangle(borderPen, x, y, cardWidth - 1, cardHeight - 1);
+
+            int cy = y + cardPad;
+
+            graphics.DrawString(GetCountryDisplayName(ev.Currency), font, Brushes.DarkGray, x + cardPad, cy);
+            cy += lh + 2;
+
+            graphics.DrawString(ev.Event, boldFont, impactBrush, x + cardPad, cy);
+            cy += blh + 2;
+
+            string dateTimeStr = ev.Date.ToString("dd MMM yy", CultureInfo.InvariantCulture) + "   " + ev.Time;
+            graphics.DrawString(dateTimeStr, font, Brushes.DarkGray, x + cardPad, cy);
+            cy += lh + 4;
+
+            graphics.DrawLine(Pens.DimGray, x + cardPad, cy, x + cardWidth - cardPad, cy);
+            cy += 4;
+
+            graphics.DrawString("Actual", font, Brushes.DarkGray, x + cardPad, cy);
+            graphics.DrawString("Forecast", font, Brushes.DarkGray, x + cardPad + colWidth, cy);
+            graphics.DrawString("Previous", font, Brushes.DarkGray, x + cardPad + colWidth * 2, cy);
+            cy += lh + 2;
+
+            graphics.DrawString(string.IsNullOrEmpty(ev.Actual) ? "—" : ev.Actual, boldFont, Brushes.White, x + cardPad, cy);
+            graphics.DrawString(string.IsNullOrEmpty(ev.Forecast) ? "—" : ev.Forecast, font, Brushes.White, x + cardPad + colWidth, cy);
+            graphics.DrawString(string.IsNullOrEmpty(ev.Previous) ? "—" : ev.Previous, font, Brushes.White, x + cardPad + colWidth * 2, cy);
+        }
+
+        private sealed class HoveredFlagInfo
+        {
+            public HoveredFlagInfo(ForexEvent ev, Rectangle markerBounds)
+            {
+                Event = ev;
+                MarkerBounds = markerBounds;
+            }
+
+            public ForexEvent Event { get; }
+            public Rectangle MarkerBounds { get; }
         }
 
         private static void DrawFlagMarker(Graphics graphics, Image flagImage, Rectangle bounds, Color impactColor)
@@ -383,6 +491,14 @@ namespace MBS_Economic_Calendar_Flags
             impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? 2 :
             3;
 
+        private static string GetCountryDisplayName(string currency)
+        {
+            var normalized = NormalizeCurrencyCode(currency);
+            return CurrencyCountryNames.TryGetValue(normalized, out var country)
+                ? $"{country}, {normalized}"
+                : normalized;
+        }
+
 
         private static DateTime ParseEventDateTimeForSorting(ForexEvent forexEvent)
         {
@@ -395,6 +511,7 @@ namespace MBS_Economic_Calendar_Flags
         public override void Dispose()
         {
             font.Dispose();
+            boldFont.Dispose();
             base.Dispose();
         }
 
@@ -465,6 +582,7 @@ namespace MBS_Economic_Calendar_Flags
                 settings.Add(new SettingItemInteger("newsPositionY", newsPositionY) { Text = "Move Up/Down (-/+)" });
 
                 settings.Add(new SettingItemBoolean("showNewsText", showNewsText) { Text = "Show News Text" });
+                settings.Add(new SettingItemBoolean("showHoverInfo", showHoverInfo) { Text = "Show Hover Info" });
                 settings.Add(new SettingItemBoolean("showVerticalLines", showVerticalLines) { Text = "Show Vertical Lines" });
                 settings.Add(new SettingItemBoolean("showPastEvents", showPastEvents)
                 {
@@ -502,6 +620,7 @@ namespace MBS_Economic_Calendar_Flags
                 if (SettingItemExtensions.TryGetValue<int>(value, "newsPositionY", out var ny)) newsPositionY = ny;
 
                 if (SettingItemExtensions.TryGetValue<bool>(value, "showNewsText", out var snt)) showNewsText = snt;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "showHoverInfo", out var shi)) showHoverInfo = shi;
                 if (SettingItemExtensions.TryGetValue<bool>(value, "showVerticalLines", out var svl)) showVerticalLines = svl;
                 if (SettingItemExtensions.TryGetValue<bool>(value, "showPastEvents", out var spe)) showPastEvents = spe;
 
@@ -603,6 +722,7 @@ namespace MBS_Economic_Calendar_Flags
                         Currency = x.Element("country")!.Value.Trim(),
                         Event = x.Element("title")!.Value.Trim(),
                         Impact = x.Element("impact")!.Value.Trim(),
+                        Actual = x.Element("actual")?.Value.Trim(),
                         Forecast = x.Element("forecast")?.Value.Trim(),
                         Previous = x.Element("previous")?.Value.Trim(),
                     };
@@ -620,6 +740,7 @@ namespace MBS_Economic_Calendar_Flags
                     Currency = ev.Currency,
                     Event = ev.Event,
                     Impact = ev.Impact,
+                    Actual = ev.Actual,
                     Forecast = ev.Forecast,
                     Previous = ev.Previous,
                 })
@@ -743,6 +864,7 @@ namespace MBS_Economic_Calendar_Flags
             public string Currency { get; set; } = "";
             public string Event { get; set; } = "";
             public string Impact { get; set; } = "";
+            public string? Actual { get; set; }
             public string? Forecast { get; set; }
             public string? Previous { get; set; }
         }
