@@ -9,6 +9,8 @@
     <AlgoType>Indicator</AlgoType>
     <AssemblyName>MBS_Economic_Calendar_Flags</AssemblyName>
     <RootNamespace>MBS_Economic_Calendar_Flags</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <OutputPath>C:\Users\LaDarrious\Desktop\Quantower\TradingPlatform\v1.146.3\..\..\Settings\Scripts\Indicators\MBS Economic Calendar Flags</OutputPath>
@@ -16,6 +18,11 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <OutputPath>C:\Users\LaDarrious\Desktop\Quantower\TradingPlatform\v1.146.3\..\..\Settings\Scripts\Indicators\MBS Economic Calendar Flags</OutputPath>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="MBS.IndicatorHost\**" />
+    <EmbeddedResource Remove="MBS.IndicatorHost\**" />
+    <None Remove="MBS.IndicatorHost\**" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.Drawing.Common" Version="10.0.10" />
   </ItemGroup>

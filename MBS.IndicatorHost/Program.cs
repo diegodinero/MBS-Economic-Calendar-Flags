@@ -1,3 +1,5 @@
+using System;
+
 // This project exists solely to satisfy Visual Studio's requirement that a solution
 // have an executable startup project in order to enable debugging.
 //
