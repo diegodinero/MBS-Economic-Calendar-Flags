@@ -123,15 +123,38 @@ namespace MBS_Economic_Calendar_Flags
         protected override void OnInit()
         {
             base.OnInit();
+
+            // Build all three font objects before touching the fields so that a repaint
+            // that fires mid-initialization never sees a mismatched set of fonts.
+            Font? selectedFont = null;
             foreach (var fam in new[] { "Droid Sans Mono", "DejaVu Sans Mono", "Consolas", "Verdana" })
             {
                 var test = new Font(fam, 10f);
-                font = test;
-                if (font.Name == fam)
+                if (test.Name == fam)
+                {
+                    selectedFont = test;
                     break;
+                }
+                test.Dispose();
             }
-            boldFont = new Font(font.FontFamily, font.Size, FontStyle.Bold);
-            headerFont = new Font(font.FontFamily, 12f, FontStyle.Bold);
+            selectedFont ??= new Font("Consolas", 10f);
+
+            var newBold   = new Font(selectedFont.FontFamily, selectedFont.Size, FontStyle.Bold);
+            var newHeader = new Font(selectedFont.FontFamily, 12f, FontStyle.Bold);
+
+            // Dispose the old fonts only after the new ones are ready, then swap atomically.
+            var oldFont   = font;
+            var oldBold   = boldFont;
+            var oldHeader = headerFont;
+
+            font       = selectedFont;
+            boldFont   = newBold;
+            headerFont = newHeader;
+
+            oldFont.Dispose();
+            oldBold.Dispose();
+            oldHeader.Dispose();
+
             _ = FetchDataOnce();
         }
 
