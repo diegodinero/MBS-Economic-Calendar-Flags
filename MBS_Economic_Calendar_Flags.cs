@@ -162,8 +162,31 @@ namespace MBS_Economic_Calendar_Flags
                     List<ForexEvent> temp;
                     if (dateMode == 1)
                     {
-                        var chartDate = Symbol?.LastDateTime.Date ?? DateTime.Today;
+                        // Use Today for current date when chart is at current time
+                        var now = DateTime.Now;
+                        var chartDateTime = Symbol?.LastDateTime ?? DateTime.MinValue;
+
+                        // If Symbol.LastDateTime is not initialized or is showing current/recent time
+                        DateTime chartDate;
+                        if (chartDateTime == DateTime.MinValue || 
+                            chartDateTime.Year < 2000 || 
+                            Math.Abs((now - chartDateTime).TotalHours) < 24)
+                        {
+                            // Use today's date
+                            chartDate = now.Date;
+                        }
+                        else
+                        {
+                            // Use the chart's date
+                            chartDate = chartDateTime.Date;
+                        }
+
+                        Debug.WriteLine($"[EconomicEventsIndicator] Chart DateTime: {chartDateTime}, Using Date: {chartDate:MM/dd/yyyy}");
+                        Debug.WriteLine($"[EconomicEventsIndicator] Total events in cache: {allEvents.Count}");
+
                         temp = allEvents.Where(e => e.Date.Date == chartDate).ToList();
+
+                        Debug.WriteLine($"[EconomicEventsIndicator] Events matching {chartDate:MM/dd/yyyy}: {temp.Count}");
                     }
                     else
                     {
@@ -236,7 +259,24 @@ namespace MBS_Economic_Calendar_Flags
                 string header;
                 if (dateMode == 1)
                 {
-                    var chartDate = Symbol.LastDateTime.Date;
+                    var now = DateTime.Now;
+                    var chartDateTime = Symbol?.LastDateTime ?? DateTime.MinValue;
+
+                    // If Symbol.LastDateTime is not initialized or is showing current/recent time
+                    DateTime chartDate;
+                    if (chartDateTime == DateTime.MinValue || 
+                        chartDateTime.Year < 2000 || 
+                        Math.Abs((now - chartDateTime).TotalHours) < 24)
+                    {
+                        // Use today's date
+                        chartDate = now.Date;
+                    }
+                    else
+                    {
+                        // Use the chart's date
+                        chartDate = chartDateTime.Date;
+                    }
+
                     header = $"Events for {chartDate:MM/dd/yyyy}";
                 }
                 else
