@@ -80,7 +80,7 @@ namespace MBS_Economic_Calendar_Flags
         private const int FlagMarkerSize = 22;
         private const int FlagInnerPadding = 2;
         private const int FlagStackSpacing = 4;
-        private const int FlagBottomMargin = 28;
+        private const int FlagBottomMargin = 22;
 
         //–– XML feed URL
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
@@ -335,16 +335,20 @@ namespace MBS_Economic_Calendar_Flags
                     if (drawY < rect.Top)
                         break;
 
-                    DrawFlagMarker(graphics, flagImage, new Rectangle(drawX, drawY, FlagMarkerSize, FlagMarkerSize));
+                    DrawFlagMarker(
+                        graphics,
+                        flagImage,
+                        new Rectangle(drawX, drawY, FlagMarkerSize, FlagMarkerSize),
+                        GetImpactColor(ev.Impact));
                     stackIndex++;
                 }
             }
         }
 
-        private static void DrawFlagMarker(Graphics graphics, Image flagImage, Rectangle bounds)
+        private static void DrawFlagMarker(Graphics graphics, Image flagImage, Rectangle bounds, Color impactColor)
         {
-            using var outlinePen = new Pen(Color.Yellow, 2f);
-            using var backgroundBrush = new SolidBrush(Color.FromArgb(20, 20, 20));
+            using var outlinePen = new Pen(impactColor, 2f);
+            using var backgroundBrush = new SolidBrush(Color.FromArgb(70, impactColor));
             using var clipPath = new GraphicsPath();
             clipPath.AddEllipse(bounds);
 
@@ -363,6 +367,12 @@ namespace MBS_Economic_Calendar_Flags
 
             graphics.DrawEllipse(outlinePen, bounds);
         }
+
+        private static Color GetImpactColor(string impact) =>
+            impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Color.Red :
+            impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Color.Orange :
+            impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Color.Green :
+            Color.White;
 
 
         private static DateTime ParseEventDateTimeForSorting(ForexEvent forexEvent)
