@@ -142,18 +142,9 @@ namespace MBS_Economic_Calendar_Flags
             var newBold   = new Font(selectedFont.FontFamily, selectedFont.Size, FontStyle.Bold);
             var newHeader = new Font(selectedFont.FontFamily, 12f, FontStyle.Bold);
 
-            // Dispose the old fonts only after the new ones are ready, then swap atomically.
-            var oldFont   = font;
-            var oldBold   = boldFont;
-            var oldHeader = headerFont;
-
             font       = selectedFont;
             boldFont   = newBold;
             headerFont = newHeader;
-
-            oldFont.Dispose();
-            oldBold.Dispose();
-            oldHeader.Dispose();
 
             _ = FetchDataOnce();
         }
