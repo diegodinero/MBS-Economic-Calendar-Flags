@@ -291,36 +291,40 @@ namespace MBS_Economic_Calendar_Flags
                     }
                 }
 
-                DrawEventFlags(g, rect, conv);
+                DrawEventFlags(g, rect, eventTimeUtc => (float)conv.GetChartX(eventTimeUtc));
             }
         }
 
-        private void DrawEventFlags(Graphics graphics, Rectangle rect, IChartWindowCoordinatesConverter conv)
+        private void DrawEventFlags(Graphics graphics, Rectangle rect, Func<DateTime, float> getChartX)
         {
             if (forexEvents == null)
                 return;
 
-            var groupedEvents = forexEvents
-                .Select(ev => new
+            var groupedEvents = new SortedDictionary<DateTime, List<ForexEvent>>();
+            foreach (var ev in forexEvents)
+            {
+                if (!TryGetEventDateTimeUtc(ev, out var eventDateTimeUtc))
+                    continue;
+
+                if (!groupedEvents.TryGetValue(eventDateTimeUtc, out var eventsAtTime))
                 {
-                    Event = ev,
-                    HasTime = TryGetEventDateTimeUtc(ev, out var eventDateTimeUtc),
-                    EventDateTimeUtc = eventDateTimeUtc
-                })
-                .Where(x => x.HasTime)
-                .GroupBy(x => x.EventDateTimeUtc)
-                .OrderBy(group => group.Key);
+                    eventsAtTime = new List<ForexEvent>();
+                    groupedEvents[eventDateTimeUtc] = eventsAtTime;
+                }
+
+                eventsAtTime.Add(ev);
+            }
 
             foreach (var group in groupedEvents)
             {
-                float xCoord = (float)conv.GetChartX(group.Key);
+                float xCoord = getChartX(group.Key);
                 if (xCoord < rect.Left - FlagWidth || xCoord > rect.Right + FlagWidth)
                     continue;
 
                 int stackIndex = 0;
-                foreach (var item in group)
+                foreach (var ev in group.Value)
                 {
-                    var flagImage = GetFlagImage(item.Event.Currency);
+                    var flagImage = GetFlagImage(ev.Currency);
                     if (flagImage == null)
                         continue;
 
@@ -598,7 +602,8 @@ namespace MBS_Economic_Calendar_Flags
                 return null;
 
             using var stream = File.OpenRead(filePath);
-            return Image.FromStream(stream);
+            using var image = Image.FromStream(stream);
+            return new Bitmap(image);
         }
 
         private DateTime GetReferenceDateTimeUtc()
