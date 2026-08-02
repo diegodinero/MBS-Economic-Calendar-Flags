@@ -292,70 +292,20 @@ namespace MBS_Economic_Calendar_Flags
                         }
                     }
 
-                    // ✅ Only show text if enabled
-                    if (showNewsText)
-                    {
-                        const int cardWidth = 235;
-                        const int cardPad = 6;
-                        const int colWidth = (cardWidth - cardPad * 2) / 3;
-
-                        Brush impactBrush =
-                            ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
-                            ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
-                            ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
-                            Brushes.White;
-
-                        int lh = font.Height;
-                        int blh = boldFont.Height;
-                        int cardHeight = cardPad + lh + 2 + blh + 2 + lh + 8 + lh + 2 + lh + cardPad;
-
-                        using (var bgBrush = new SolidBrush(Color.FromArgb(200, 35, 35, 35)))
-                            g.FillRectangle(bgBrush, x, y, cardWidth, cardHeight);
-                        using (var borderPen = new Pen(Color.FromArgb(100, 150, 150, 150), 1f))
-                            g.DrawRectangle(borderPen, x, y, cardWidth - 1, cardHeight - 1);
-
-                        int cy = y + cardPad;
-
-                        // Country, Currency
-                        g.DrawString(GetCountryDisplayName(ev.Currency), font, Brushes.DarkGray, x + cardPad, cy);
-                        cy += lh + 2;
-
-                        // Event name (bold, impact color)
-                        g.DrawString(ev.Event, boldFont, impactBrush, x + cardPad, cy);
-                        cy += blh + 2;
-
-                        // Date and time
-                        string dateTimeStr = ev.Date.ToString("dd MMM yy", CultureInfo.InvariantCulture) + "   " + ev.Time;
-                        g.DrawString(dateTimeStr, font, Brushes.DarkGray, x + cardPad, cy);
-                        cy += lh + 4;
-
-                        // Separator line
-                        g.DrawLine(Pens.DimGray, x + cardPad, cy, x + cardWidth - cardPad, cy);
-                        cy += 4;
-
-                        // Column headers
-                        g.DrawString("Actual", font, Brushes.DarkGray, x + cardPad, cy);
-                        g.DrawString("Forecast", font, Brushes.DarkGray, x + cardPad + colWidth, cy);
-                        g.DrawString("Previous", font, Brushes.DarkGray, x + cardPad + colWidth * 2, cy);
-                        cy += lh + 2;
-
-                        // Values
-                        g.DrawString(string.IsNullOrEmpty(ev.Actual) ? "—" : ev.Actual, boldFont, Brushes.White, x + cardPad, cy);
-                        g.DrawString(string.IsNullOrEmpty(ev.Forecast) ? "—" : ev.Forecast, font, Brushes.White, x + cardPad + colWidth, cy);
-                        g.DrawString(string.IsNullOrEmpty(ev.Previous) ? "—" : ev.Previous, font, Brushes.White, x + cardPad + colWidth * 2, cy);
-
-                        y += cardHeight + 6;
-                    }
                 }
 
-                DrawEventFlags(g, rect, eventTimeUtc => (float)conv.GetChartX(eventTimeUtc));
+                var hoveredEvent = DrawEventFlags(g, rect, eventTimeUtc => (float)conv.GetChartX(eventTimeUtc), args.MousePosition);
+                if (showNewsText && hoveredEvent != null)
+                {
+                    DrawEventCard(g, hoveredEvent, x, y);
+                }
             }
         }
 
-        private void DrawEventFlags(Graphics graphics, Rectangle rect, Func<DateTime, float> getChartX)
+        private ForexEvent? DrawEventFlags(Graphics graphics, Rectangle rect, Func<DateTime, float> getChartX, Point mousePosition)
         {
             if (forexEvents == null)
-                return;
+                return null;
 
             var groupedEvents = new SortedDictionary<DateTime, List<ForexEvent>>();
             foreach (var ev in forexEvents)
@@ -372,6 +322,7 @@ namespace MBS_Economic_Calendar_Flags
                 eventsAtTime.Add(ev);
             }
 
+            ForexEvent? hoveredEvent = null;
             foreach (var group in groupedEvents)
             {
                 float xCoord = getChartX(group.Key);
@@ -393,14 +344,67 @@ namespace MBS_Economic_Calendar_Flags
                     if (drawY < rect.Top)
                         break;
 
+                    var markerBounds = new Rectangle(drawX, drawY, FlagMarkerSize, FlagMarkerSize);
                     DrawFlagMarker(
                         graphics,
                         flagImage,
-                        new Rectangle(drawX, drawY, FlagMarkerSize, FlagMarkerSize),
+                        markerBounds,
                         GetImpactColor(ev.Impact));
+
+                    if (markerBounds.Contains(mousePosition))
+                        hoveredEvent = ev;
+
                     stackIndex++;
                 }
             }
+
+            return hoveredEvent;
+        }
+
+        private void DrawEventCard(Graphics graphics, ForexEvent ev, int x, int y)
+        {
+            const int cardWidth = 235;
+            const int cardPad = 6;
+            const int colWidth = (cardWidth - cardPad * 2) / 3;
+
+            Brush impactBrush =
+                ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
+                ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Brushes.Orange :
+                ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Brushes.Green :
+                Brushes.White;
+
+            int lh = font.Height;
+            int blh = boldFont.Height;
+            int cardHeight = cardPad + lh + 2 + blh + 2 + lh + 8 + lh + 2 + lh + cardPad;
+
+            using (var bgBrush = new SolidBrush(Color.FromArgb(200, 35, 35, 35)))
+                graphics.FillRectangle(bgBrush, x, y, cardWidth, cardHeight);
+            using (var borderPen = new Pen(Color.FromArgb(100, 150, 150, 150), 1f))
+                graphics.DrawRectangle(borderPen, x, y, cardWidth - 1, cardHeight - 1);
+
+            int cy = y + cardPad;
+
+            graphics.DrawString(GetCountryDisplayName(ev.Currency), font, Brushes.DarkGray, x + cardPad, cy);
+            cy += lh + 2;
+
+            graphics.DrawString(ev.Event, boldFont, impactBrush, x + cardPad, cy);
+            cy += blh + 2;
+
+            string dateTimeStr = ev.Date.ToString("dd MMM yy", CultureInfo.InvariantCulture) + "   " + ev.Time;
+            graphics.DrawString(dateTimeStr, font, Brushes.DarkGray, x + cardPad, cy);
+            cy += lh + 4;
+
+            graphics.DrawLine(Pens.DimGray, x + cardPad, cy, x + cardWidth - cardPad, cy);
+            cy += 4;
+
+            graphics.DrawString("Actual", font, Brushes.DarkGray, x + cardPad, cy);
+            graphics.DrawString("Forecast", font, Brushes.DarkGray, x + cardPad + colWidth, cy);
+            graphics.DrawString("Previous", font, Brushes.DarkGray, x + cardPad + colWidth * 2, cy);
+            cy += lh + 2;
+
+            graphics.DrawString(string.IsNullOrEmpty(ev.Actual) ? "—" : ev.Actual, boldFont, Brushes.White, x + cardPad, cy);
+            graphics.DrawString(string.IsNullOrEmpty(ev.Forecast) ? "—" : ev.Forecast, font, Brushes.White, x + cardPad + colWidth, cy);
+            graphics.DrawString(string.IsNullOrEmpty(ev.Previous) ? "—" : ev.Previous, font, Brushes.White, x + cardPad + colWidth * 2, cy);
         }
 
         private static void DrawFlagMarker(Graphics graphics, Image flagImage, Rectangle bounds, Color impactColor)
