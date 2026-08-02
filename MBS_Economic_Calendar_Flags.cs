@@ -48,6 +48,7 @@ namespace MBS_Economic_Calendar_Flags
 
         private bool showNewsText = true;
         private bool showVerticalLines = true;
+        private bool showHoverInfo = true;
         private bool showPastEvents = false;
 
 
@@ -298,16 +299,12 @@ namespace MBS_Economic_Calendar_Flags
                 }
 
                 var hoveredFlag = DrawEventFlags(g, rect, eventTimeUtc => (float)conv.GetChartX(eventTimeUtc), args.MousePosition);
-                if (showNewsText && hoveredFlag != null)
+                if (showHoverInfo && hoveredFlag != null)
                 {
                     int cardHeight = GetEventCardHeight();
                     int cardX = hoveredFlag.MarkerBounds.Right + 8;
                     int cardY = hoveredFlag.MarkerBounds.Top - (cardHeight / 2);
 
-                    if (cardX + EventCardWidth > rect.Right)
-                        cardX = hoveredFlag.MarkerBounds.Left - EventCardWidth - 8;
-
-                    cardX = Math.Max(rect.Left, Math.Min(cardX, rect.Right - EventCardWidth));
                     cardY = Math.Max(rect.Top, Math.Min(cardY, rect.Bottom - cardHeight));
 
                     DrawEventCard(g, hoveredFlag.Event, cardX, cardY);
@@ -585,6 +582,7 @@ namespace MBS_Economic_Calendar_Flags
                 settings.Add(new SettingItemInteger("newsPositionY", newsPositionY) { Text = "Move Up/Down (-/+)" });
 
                 settings.Add(new SettingItemBoolean("showNewsText", showNewsText) { Text = "Show News Text" });
+                settings.Add(new SettingItemBoolean("showHoverInfo", showHoverInfo) { Text = "Show Hover Info" });
                 settings.Add(new SettingItemBoolean("showVerticalLines", showVerticalLines) { Text = "Show Vertical Lines" });
                 settings.Add(new SettingItemBoolean("showPastEvents", showPastEvents)
                 {
@@ -622,6 +620,7 @@ namespace MBS_Economic_Calendar_Flags
                 if (SettingItemExtensions.TryGetValue<int>(value, "newsPositionY", out var ny)) newsPositionY = ny;
 
                 if (SettingItemExtensions.TryGetValue<bool>(value, "showNewsText", out var snt)) showNewsText = snt;
+                if (SettingItemExtensions.TryGetValue<bool>(value, "showHoverInfo", out var shi)) showHoverInfo = shi;
                 if (SettingItemExtensions.TryGetValue<bool>(value, "showVerticalLines", out var svl)) showVerticalLines = svl;
                 if (SettingItemExtensions.TryGetValue<bool>(value, "showPastEvents", out var spe)) showPastEvents = spe;
 
