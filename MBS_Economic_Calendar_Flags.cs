@@ -863,11 +863,44 @@ namespace MBS_Economic_Calendar_Flags
 
         private static TimeZoneInfo ResolveEasternTimeZone()
         {
-            return TimeZoneInfo.CreateCustomTimeZone(
-                "EST",
-                TimeSpan.FromHours(-5),
-                "Eastern Standard Time",
-                "EST");
+            // Prefer the system time zone (handles DST). Try Windows id first, then IANA id.
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                try
+                {
+                    return TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+                }
+                catch
+                {
+                    // Fallback to a fixed -5 offset if system zones are unavailable
+                    return TimeZoneInfo.CreateCustomTimeZone(
+                        "EST",
+                        TimeSpan.FromHours(-5),
+                        "Eastern Standard Time",
+                        "EST");
+                }
+            }
+            catch (InvalidTimeZoneException)
+            {
+                // Fallback to a fixed -5 offset on corrupt zone data
+                return TimeZoneInfo.CreateCustomTimeZone(
+                    "EST",
+                    TimeSpan.FromHours(-5),
+                    "Eastern Standard Time",
+                    "EST");
+            }
+            catch
+            {
+                return TimeZoneInfo.CreateCustomTimeZone(
+                    "EST",
+                    TimeSpan.FromHours(-5),
+                    "Eastern Standard Time",
+                    "EST");
+            }
         }
 
         private static DateTime GetEasternNow()
@@ -1106,16 +1139,41 @@ namespace MBS_Economic_Calendar_Flags
 
         private static string GetDisplayTime(ForexEvent forexEvent)
         {
-            return TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern)
-                ? eventDateTimeEastern.ToString("HH:mm", CultureInfo.InvariantCulture)
-                : forexEvent.Time;
+            if (TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern))
+            {
+                try
+                {
+                    // Parsed time from feed is UTC; convert from UTC to Eastern (handles DST)
+                    var utc = DateTime.SpecifyKind(eventDateTimeEastern, DateTimeKind.Utc);
+                    var eastern = TimeZoneInfo.ConvertTimeFromUtc(utc, EasternTimeZone);
+                    return eastern.ToString("HH:mm", CultureInfo.InvariantCulture);
+                }
+                catch
+                {
+                    return eventDateTimeEastern.ToString("HH:mm", CultureInfo.InvariantCulture);
+                }
+            }
+
+            return forexEvent.Time;
         }
 
         private static string GetDisplayDateTime(ForexEvent forexEvent)
         {
-            return TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern)
-                ? eventDateTimeEastern.ToString("dd MMM yy   HH:mm", CultureInfo.InvariantCulture)
-                : forexEvent.Date.ToString("dd MMM yy", CultureInfo.InvariantCulture) + "   " + forexEvent.Time;
+            if (TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern))
+            {
+                try
+                {
+                    var utc = DateTime.SpecifyKind(eventDateTimeEastern, DateTimeKind.Utc);
+                    var eastern = TimeZoneInfo.ConvertTimeFromUtc(utc, EasternTimeZone);
+                    return eastern.ToString("dd MMM yy   HH:mm", CultureInfo.InvariantCulture);
+                }
+                catch
+                {
+                    return eventDateTimeEastern.ToString("dd MMM yy   HH:mm", CultureInfo.InvariantCulture);
+                }
+            }
+
+            return forexEvent.Date.ToString("dd MMM yy", CultureInfo.InvariantCulture) + "   " + forexEvent.Time;
         }
 
         public class ForexEvent
