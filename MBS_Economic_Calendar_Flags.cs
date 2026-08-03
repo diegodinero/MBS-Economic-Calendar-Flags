@@ -1071,9 +1071,13 @@ namespace MBS_Economic_Calendar_Flags
         {
             var referenceDateTime = Symbol?.LastDateTime ?? DateTime.UtcNow;
             if (referenceDateTime.Kind == DateTimeKind.Utc)
-                return TimeZoneInfo.ConvertTimeFromUtc(referenceDateTime, EasternTimeZone);
+            {
+                return DateTime.SpecifyKind(
+                    TimeZoneInfo.ConvertTimeFromUtc(referenceDateTime, EasternTimeZone),
+                    DateTimeKind.Unspecified);
+            }
 
-            return referenceDateTime;
+            return DateTime.SpecifyKind(referenceDateTime, DateTimeKind.Unspecified);
         }
 
         private static bool TryGetEventDateTimeEastern(ForexEvent forexEvent, out DateTime eventDateTimeEastern)
@@ -1096,7 +1100,7 @@ namespace MBS_Economic_Calendar_Flags
                     .AddMinutes(eventTime.Minute),
                 DateTimeKind.Unspecified);
 
-            eventDateTimeEastern = easternDateTime;
+            eventDateTimeEastern = DateTime.SpecifyKind(easternDateTime, DateTimeKind.Unspecified);
             return true;
         }
 
