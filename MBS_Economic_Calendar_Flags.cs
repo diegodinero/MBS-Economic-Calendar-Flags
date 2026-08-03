@@ -863,6 +863,28 @@ namespace MBS_Economic_Calendar_Flags
 
         private static TimeZoneInfo ResolveEasternTimeZone()
         {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+
             return TimeZoneInfo.CreateCustomTimeZone(
                 "EST",
                 TimeSpan.FromHours(-5),
