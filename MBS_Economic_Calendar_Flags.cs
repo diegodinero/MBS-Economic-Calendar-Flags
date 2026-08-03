@@ -222,10 +222,10 @@ namespace MBS_Economic_Calendar_Flags
 
                         if (!showPastEvents)
                         {
-                            var referenceDateTimeUtc = GetReferenceDateTimeUtc();
+                            var referenceDateTimeEastern = GetReferenceDateTimeEastern();
                             temp = temp
-                                .Where(e => !TryGetEventDateTimeUtc(e, out var eventDateTimeUtc)
-                                        || eventDateTimeUtc >= referenceDateTimeUtc)
+                                .Where(e => !TryGetEventDateTimeEastern(e, out var eventDateTimeEastern)
+                                        || eventDateTimeEastern >= referenceDateTimeEastern)
                                 .ToList();
                         }
                     }
@@ -351,18 +351,18 @@ namespace MBS_Economic_Calendar_Flags
                         Pens.White;
 
                     // Convert event time
-                    if (TryGetEventDateTimeUtc(ev, out var eventDateTimeUtc))
+                    if (TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern))
                     {
                         if (showVerticalLines)
                         {
-                            float xCoord = (float)conv.GetChartX(eventDateTimeUtc);
+                            float xCoord = (float)conv.GetChartX(eventDateTimeEastern);
                             g.DrawLine(linePen, xCoord, rect.Top, xCoord, rect.Bottom);
                         }
                     }
 
                 }
 
-                var hoveredFlag = DrawEventFlags(g, rect, eventTimeUtc => (float)conv.GetChartX(eventTimeUtc), args.MousePosition);
+                var hoveredFlag = DrawEventFlags(g, rect, eventTimeEastern => (float)conv.GetChartX(eventTimeEastern), args.MousePosition);
                 if (showHoverInfo && hoveredFlag != null)
                 {
                     int cardHeight = GetEventCardHeight();
@@ -384,13 +384,13 @@ namespace MBS_Economic_Calendar_Flags
             var groupedEvents = new SortedDictionary<DateTime, List<ForexEvent>>();
             foreach (var ev in forexEvents)
             {
-                if (!TryGetEventDateTimeUtc(ev, out var eventDateTimeUtc))
+                if (!TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern))
                     continue;
 
-                if (!groupedEvents.TryGetValue(eventDateTimeUtc, out var eventsAtTime))
+                if (!groupedEvents.TryGetValue(eventDateTimeEastern, out var eventsAtTime))
                 {
                     eventsAtTime = new List<ForexEvent>();
-                    groupedEvents[eventDateTimeUtc] = eventsAtTime;
+                    groupedEvents[eventDateTimeEastern] = eventsAtTime;
                 }
 
                 eventsAtTime.Add(ev);
@@ -733,8 +733,8 @@ namespace MBS_Economic_Calendar_Flags
 
         private static DateTime ParseEventDateTimeForSorting(ForexEvent forexEvent)
         {
-            if (TryGetEventDateTimeUtc(forexEvent, out var eventDateTimeUtc))
-                return eventDateTimeUtc;
+            if (TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern))
+                return eventDateTimeEastern;
 
             return forexEvent.Date.Date;
         }
@@ -1067,17 +1067,18 @@ namespace MBS_Economic_Calendar_Flags
             return scaled;
         }
 
-        private DateTime GetReferenceDateTimeUtc()
+        private DateTime GetReferenceDateTimeEastern()
         {
             var referenceDateTime = Symbol?.LastDateTime ?? DateTime.UtcNow;
-            return referenceDateTime.Kind == DateTimeKind.Utc
-                ? referenceDateTime
-                : referenceDateTime.ToUniversalTime();
+            if (referenceDateTime.Kind == DateTimeKind.Utc)
+                return TimeZoneInfo.ConvertTimeFromUtc(referenceDateTime, EasternTimeZone);
+
+            return referenceDateTime;
         }
 
-        private static bool TryGetEventDateTimeUtc(ForexEvent forexEvent, out DateTime eventDateTimeUtc)
+        private static bool TryGetEventDateTimeEastern(ForexEvent forexEvent, out DateTime eventDateTimeEastern)
         {
-            eventDateTimeUtc = default;
+            eventDateTimeEastern = default;
 
             if (!DateTime.TryParseExact(
                 forexEvent.Time,
@@ -1095,7 +1096,7 @@ namespace MBS_Economic_Calendar_Flags
                     .AddMinutes(eventTime.Minute),
                 DateTimeKind.Unspecified);
 
-            eventDateTimeUtc = TimeZoneInfo.ConvertTimeToUtc(easternDateTime, EasternTimeZone);
+            eventDateTimeEastern = easternDateTime;
             return true;
         }
 
