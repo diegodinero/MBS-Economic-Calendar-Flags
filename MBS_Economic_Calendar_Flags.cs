@@ -562,7 +562,7 @@ namespace MBS_Economic_Calendar_Flags
             int cx = x;
             cx += dateColWidth;
 
-            DrawCellText(graphics, ev.Time, font, Brushes.Gainsboro, cx, y, timeColWidth, rowHeight, StringAlignment.Center);
+            DrawCellText(graphics, GetDisplayTime(ev), font, Brushes.Gainsboro, cx, y, timeColWidth, rowHeight, StringAlignment.Center);
             cx += timeColWidth;
             graphics.DrawLine(gridPen, cx, y, cx, y + rowHeight);
 
@@ -654,7 +654,7 @@ namespace MBS_Economic_Calendar_Flags
             graphics.DrawString(ev.Event, boldFont, impactBrush, x + cardPad, cy);
             cy += blh + 2;
 
-            string dateTimeStr = ev.Date.ToString("dd MMM yy", CultureInfo.InvariantCulture) + "   " + ev.Time;
+            string dateTimeStr = GetDisplayDateTime(ev);
             graphics.DrawString(dateTimeStr, font, Brushes.DarkGray, x + cardPad, cy);
             cy += lh + 4;
 
@@ -1102,6 +1102,20 @@ namespace MBS_Economic_Calendar_Flags
 
             eventDateTimeEastern = DateTime.SpecifyKind(easternDateTime, DateTimeKind.Unspecified);
             return true;
+        }
+
+        private static string GetDisplayTime(ForexEvent forexEvent)
+        {
+            return TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern)
+                ? eventDateTimeEastern.ToString("HH:mm", CultureInfo.InvariantCulture)
+                : forexEvent.Time;
+        }
+
+        private static string GetDisplayDateTime(ForexEvent forexEvent)
+        {
+            return TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern)
+                ? eventDateTimeEastern.ToString("dd MMM yy   HH:mm", CultureInfo.InvariantCulture)
+                : forexEvent.Date.ToString("dd MMM yy", CultureInfo.InvariantCulture) + "   " + forexEvent.Time;
         }
 
         public class ForexEvent
