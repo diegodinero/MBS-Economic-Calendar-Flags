@@ -27,8 +27,8 @@ namespace MBS_Economic_Calendar_Flags
 
         //–– Settings fields
         private int dateMode = 1;  // 1 = current chart date, 2 = custom range
-        private DateTime customStartDate = DateTime.UtcNow.Date;
-        private DateTime customEndDate = DateTime.UtcNow.Date;
+        private DateTime customStartDate = GetEasternNow().Date;
+        private DateTime customEndDate = GetEasternNow().Date;
 
         private bool highImpact = true;
         private bool mediumImpact = true;
@@ -188,7 +188,7 @@ namespace MBS_Economic_Calendar_Flags
                     if (dateMode == 1)
                     {
                         // Use Today for current date when chart is at current time
-                        var now = DateTime.Now;
+                        var now = GetEasternNow();
                         var chartDateTime = Symbol?.LastDateTime ?? DateTime.MinValue;
 
                         // If Symbol.LastDateTime is not initialized or is showing current/recent time
@@ -283,7 +283,7 @@ namespace MBS_Economic_Calendar_Flags
                 string header;
                 if (dateMode == 1)
                 {
-                    var now = DateTime.Now;
+                    var now = GetEasternNow();
                     var chartDateTime = Symbol?.LastDateTime ?? DateTime.MinValue;
 
                     // If Symbol.LastDateTime is not initialized or is showing current/recent time
@@ -305,7 +305,7 @@ namespace MBS_Economic_Calendar_Flags
                 }
                 else
                 {
-                    header = $"{DateTime.Now:MM/dd/yy} News via Forex Factory";
+                    header = $"{GetEasternNow():MM/dd/yy} News via Forex Factory";
                 }
 
                 g.DrawString(header, headerFont, Brushes.Cyan, x + 2, y + 2);
@@ -863,21 +863,16 @@ namespace MBS_Economic_Calendar_Flags
 
         private static TimeZoneInfo ResolveEasternTimeZone()
         {
-            foreach (var id in new[] { "Eastern Standard Time", "America/New_York" })
-            {
-                try
-                {
-                    return TimeZoneInfo.FindSystemTimeZoneById(id);
-                }
-                catch (TimeZoneNotFoundException)
-                {
-                }
-                catch (InvalidTimeZoneException)
-                {
-                }
-            }
+            return TimeZoneInfo.CreateCustomTimeZone(
+                "EST",
+                TimeSpan.FromHours(-5),
+                "Eastern Standard Time",
+                "EST");
+        }
 
-            return TimeZoneInfo.Utc;
+        private static DateTime GetEasternNow()
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, EasternTimeZone);
         }
 
         private static bool TryGetFreshCache(out List<ForexEvent>? events)
