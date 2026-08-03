@@ -26,9 +26,7 @@ namespace MBS_Economic_Calendar_Flags
     {
 
         //–– Settings fields
-        private int dateMode = 1;  // 1 = current chart date, 2 = custom range
-        private DateTime customStartDate = GetEasternNow().Date;
-        private DateTime customEndDate = GetEasternNow().Date;
+        private int dateMode = 1;  // 1 = current chart date, 2 = current week
 
         private bool highImpact = true;
         private bool mediumImpact = true;
@@ -92,6 +90,7 @@ namespace MBS_Economic_Calendar_Flags
         private static List<ForexEvent>? cachedEvents;
         private static DateTime cacheFetchedAtUtc = DateTime.MinValue;
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
+        private static readonly TimeSpan ActualRefreshThrottle = TimeSpan.FromMinutes(1);
         private const int FlagMarkerSize = 22;
         private const int FlagInnerPadding = 2;
         private const int FlagImageSize = FlagMarkerSize - FlagInnerPadding * 2;
@@ -110,6 +109,8 @@ namespace MBS_Economic_Calendar_Flags
 
         //–– XML feed URL
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
+        private int refreshInProgress;
+        private DateTime lastActualRefreshAttemptUtc = DateTime.MinValue;
 
         /// <summary>
         /// Indicator's constructor. Contains general information: name, description, LineSeries etc. 
@@ -154,10 +155,10 @@ namespace MBS_Economic_Calendar_Flags
             boldFont   = newBold;
             headerFont = newHeader;
 
-            _ = FetchDataOnce();
+            _ = FetchDataAsync();
         }
 
-        private async Task FetchDataOnce()
+        private async Task FetchDataAsync()
         {
             try
             {
@@ -215,9 +216,12 @@ namespace MBS_Economic_Calendar_Flags
                     }
                     else
                     {
+                        var currentWeekStart = GetCurrentWeekStart(GetEasternNow());
+                        var currentWeekEnd = currentWeekStart.AddDays(6);
+
                         temp = allEvents
-                            .Where(e => e.Date.Date >= customStartDate.Date
-                                     && e.Date.Date <= customEndDate.Date)
+                            .Where(e => e.Date.Date >= currentWeekStart.Date
+                                     && e.Date.Date <= currentWeekEnd.Date)
                             .ToList();
 
                         if (!showPastEvents)
@@ -305,7 +309,9 @@ namespace MBS_Economic_Calendar_Flags
                 }
                 else
                 {
-                    header = $"{GetEasternNow():MM/dd/yy} News via Forex Factory";
+                    var currentWeekStart = GetCurrentWeekStart(GetEasternNow());
+                    var currentWeekEnd = currentWeekStart.AddDays(6);
+                    header = $"Current Week {currentWeekStart:MM/dd/yy} - {currentWeekEnd:MM/dd/yy} News via Forex Factory";
                 }
 
                 g.DrawString(header, headerFont, Brushes.Cyan, x + 2, y + 2);
@@ -333,6 +339,8 @@ namespace MBS_Economic_Calendar_Flags
                     DrawNewsTable(g, forexEvents.OrderBy(ParseEventDateTimeForSorting), x + 2, y, rect.Right, rect.Bottom);
                 }
             }
+
+            TryRefreshActuals(forexEvents);
 
             // ✅ Event rendering section
             if (forexEvents != null)
@@ -754,27 +762,15 @@ namespace MBS_Economic_Calendar_Flags
                 var settings = base.Settings;
 
                 var siCurrent = new SelectItem("Current Chart Date", 1);
-                var siCustom = new SelectItem("Custom Date", 2);
+                var siWeek = new SelectItem("Current Week", 2);
 
                 settings.Add(new SettingItemSelectorLocalized(
                     "dateMode",
                     new SelectItem("dateMode", dateMode),
-                    new List<SelectItem> { siCurrent, siCustom },
+                    new List<SelectItem> { siCurrent, siWeek },
                     0
                 )
                 { Text = "Select Date:" });
-
-                settings.Add(new SettingItemDateTime("customStartDate", customStartDate)
-                {
-                    Text = "From Date",
-                    Relation = new SettingItemRelationVisibility("dateMode", new object[] { siCustom })
-                });
-
-                settings.Add(new SettingItemDateTime("customEndDate", customEndDate)
-                {
-                    Text = "To Date",
-                    Relation = new SettingItemRelationVisibility("dateMode", new object[] { siCustom })
-                });
 
                 settings.Add(new SettingItemBoolean("highImpact", highImpact) { Text = "High Impact" });
                 settings.Add(new SettingItemBoolean("mediumImpact", mediumImpact) { Text = "Medium Impact" });
@@ -819,7 +815,7 @@ namespace MBS_Economic_Calendar_Flags
                 settings.Add(new SettingItemBoolean("showPastEvents", showPastEvents)
                 {
                     Text = "Show Past Events",
-                    Relation = new SettingItemRelationVisibility("dateMode", new object[] { siCustom })
+                    Relation = new SettingItemRelationVisibility("dateMode", new object[] { siWeek })
                 });
 
 
@@ -828,8 +824,6 @@ namespace MBS_Economic_Calendar_Flags
             set
             {
                 if (SettingItemExtensions.TryGetValue<int>(value, "dateMode", out var dm)) dateMode = dm;
-                if (SettingItemExtensions.TryGetValue<DateTime>(value, "customStartDate", out var cs)) customStartDate = cs;
-                if (SettingItemExtensions.TryGetValue<DateTime>(value, "customEndDate", out var ce)) customEndDate = ce;
 
                 if (SettingItemExtensions.TryGetValue<bool>(value, "highImpact", out var hi)) highImpact = hi;
                 if (SettingItemExtensions.TryGetValue<bool>(value, "mediumImpact", out var mi)) mediumImpact = mi;
@@ -859,6 +853,63 @@ namespace MBS_Economic_Calendar_Flags
 
                 ApplyFilters();
             }
+        }
+
+        private static DateTime GetCurrentWeekStart(DateTime easternDateTime)
+        {
+            var diff = (7 + (int)easternDateTime.DayOfWeek - (int)DayOfWeek.Sunday) % 7;
+            return easternDateTime.Date.AddDays(-diff);
+        }
+
+        private void TryRefreshActuals(IReadOnlyCollection<ForexEvent>? visibleEvents)
+        {
+            if (visibleEvents == null || visibleEvents.Count == 0)
+                return;
+
+            if (DateTime.UtcNow - lastActualRefreshAttemptUtc < ActualRefreshThrottle)
+                return;
+
+            var nowEastern = GetEasternNow();
+            var needsRefresh = visibleEvents.Any(ev =>
+                !string.IsNullOrWhiteSpace(ev.Event) &&
+                string.IsNullOrWhiteSpace(ev.Actual) &&
+                TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern) &&
+                eventDateTimeEastern <= nowEastern);
+
+            if (!needsRefresh)
+                return;
+
+            if (Interlocked.CompareExchange(ref refreshInProgress, 1, 0) != 0)
+                return;
+
+            lastActualRefreshAttemptUtc = DateTime.UtcNow;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await RefreshEventsAsync(forceRefresh: true);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref refreshInProgress, 0);
+                }
+            });
+        }
+
+        private async Task RefreshEventsAsync(bool forceRefresh)
+        {
+            try
+            {
+                allEvents = await GetCachedEventsAsync(forceRefresh);
+                fetchError = null;
+            }
+            catch (Exception ex)
+            {
+                fetchError = ex;
+                Debug.WriteLine($"[EconomicEventsIndicator] Refresh error: {ex}");
+            }
+
+            ApplyFilters();
         }
 
         private static TimeZoneInfo ResolveEasternTimeZone()
@@ -921,15 +972,15 @@ namespace MBS_Economic_Calendar_Flags
             return true;
         }
 
-        private static async Task<List<ForexEvent>> GetCachedEventsAsync()
+        private static async Task<List<ForexEvent>> GetCachedEventsAsync(bool forceRefresh = false)
         {
-            if (TryGetFreshCache(out var freshEvents) && freshEvents != null)
+            if (!forceRefresh && TryGetFreshCache(out var freshEvents) && freshEvents != null)
                 return freshEvents;
 
             await CacheSemaphore.WaitAsync();
             try
             {
-                if (TryGetFreshCache(out freshEvents) && freshEvents != null)
+                if (!forceRefresh && TryGetFreshCache(out freshEvents) && freshEvents != null)
                     return freshEvents;
 
                 using var http = new HttpClient();
