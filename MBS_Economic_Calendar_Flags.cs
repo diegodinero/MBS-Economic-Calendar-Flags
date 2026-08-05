@@ -92,6 +92,7 @@ namespace MBS_Economic_Calendar_Flags
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
         private static readonly TimeSpan ActualRefreshThrottle = TimeSpan.FromMinutes(1);
         private static readonly TimeSpan ActualRefreshDelay = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan ActualRefreshMaxAge = TimeSpan.FromHours(6);
         private const int FlagMarkerSize = 22;
         private const int FlagInnerPadding = 2;
         private const int FlagImageSize = FlagMarkerSize - FlagInnerPadding * 2;
@@ -113,6 +114,7 @@ namespace MBS_Economic_Calendar_Flags
         private int refreshInProgress;
         private DateTime lastActualRefreshAttemptUtc = DateTime.MinValue;
         private readonly Dictionary<string, DateTime> pendingActualRefreshes = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, DateTime> pendingActualRefreshFirstSeen = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Indicator's constructor. Contains general information: name, description, LineSeries etc. 
@@ -872,6 +874,7 @@ namespace MBS_Economic_Calendar_Flags
                 return;
 
             var nowEastern = GetEasternNow();
+            var nowUtc = DateTime.UtcNow;
             var dueEvents = new List<ForexEvent>();
             lock (lockObject)
             {
@@ -888,19 +891,27 @@ namespace MBS_Economic_Calendar_Flags
                     var key = GetEventRefreshKey(ev);
                     if (!pendingActualRefreshes.TryGetValue(key, out var requestedAtUtc))
                     {
-                        pendingActualRefreshes[key] = DateTime.UtcNow;
+                        pendingActualRefreshes[key] = nowUtc;
+                        pendingActualRefreshFirstSeen[key] = nowUtc;
                         continue;
                     }
 
-                    if (DateTime.UtcNow - requestedAtUtc < ActualRefreshDelay)
+                    if (pendingActualRefreshFirstSeen.TryGetValue(key, out var firstSeenUtc) &&
+                        nowUtc - firstSeenUtc > ActualRefreshMaxAge)
+                    {
+                        pendingActualRefreshes.Remove(key);
+                        pendingActualRefreshFirstSeen.Remove(key);
+                        continue;
+                    }
+
+                    if (nowUtc - requestedAtUtc < ActualRefreshDelay)
                         continue;
 
-                    pendingActualRefreshes[key] = DateTime.UtcNow;
                     dueEvents.Add(ev);
                 }
             }
 
-            if (!dueEvents.Any())
+            if (dueEvents.Count == 0)
                 return;
 
             if (Interlocked.CompareExchange(ref refreshInProgress, 1, 0) != 0)
@@ -918,15 +929,58 @@ namespace MBS_Economic_Calendar_Flags
                     Interlocked.Exchange(ref refreshInProgress, 0);
                     lock (lockObject)
                     {
-                        foreach (var ev in dueEvents)
-                            pendingActualRefreshes.Remove(GetEventRefreshKey(ev));
+                        if (allEvents != null)
+                        {
+                            var refreshedEventsByKey = allEvents
+                                .GroupBy(GetEventRefreshKey, StringComparer.OrdinalIgnoreCase)
+                                .ToDictionary(
+                                    group => group.Key,
+                                    group => group.FirstOrDefault(e => !string.IsNullOrWhiteSpace(e.Actual)) ?? group.Last(),
+                                    StringComparer.OrdinalIgnoreCase);
+
+                            foreach (var ev in dueEvents)
+                            {
+                                var key = GetEventRefreshKey(ev);
+                                var refreshedEvent = refreshedEventsByKey.TryGetValue(key, out var updatedEvent)
+                                    ? updatedEvent
+                                    : null;
+                                if (refreshedEvent != null && !string.IsNullOrWhiteSpace(refreshedEvent.Actual))
+                                {
+                                    pendingActualRefreshes.Remove(key);
+                                    pendingActualRefreshFirstSeen.Remove(key);
+                                }
+                                else
+                                {
+                                    pendingActualRefreshes[key] = DateTime.UtcNow;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            foreach (var ev in dueEvents)
+                            {
+                                pendingActualRefreshes[GetEventRefreshKey(ev)] = DateTime.UtcNow;
+                            }
+                        }
                     }
                 }
             });
         }
 
         private static string GetEventRefreshKey(ForexEvent ev) =>
-            $"{ev.Date:yyyy-MM-dd}|{ev.Time}|{NormalizeCurrencyCode(ev.Currency)}|{ev.Event}";
+            // Use a low-collision separator for external feed fields.
+            $"{ev.Date:yyyy-MM-dd}\u001f{NormalizeTimeComponent(ev.Time)}\u001f{NormalizeCurrencyCode(ev.Currency)}\u001f{ev.Event}";
+
+        private static string NormalizeTimeComponent(string? time)
+        {
+            if (string.IsNullOrWhiteSpace(time))
+                return string.Empty;
+
+            if (DateTime.TryParse(time, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsed))
+                return parsed.ToString("HH:mm", CultureInfo.InvariantCulture);
+
+            return time.Trim();
+        }
 
         private async Task RefreshEventsAsync(bool forceRefresh)
         {
