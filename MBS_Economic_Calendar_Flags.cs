@@ -994,7 +994,7 @@ namespace MBS_Economic_Calendar_Flags
 
             var trimmed = time.Trim();
             if (TimeSpan.TryParse(trimmed, CultureInfo.InvariantCulture, out var parsedTime))
-                return parsedTime.ToString(@"hh\:mm", CultureInfo.InvariantCulture);
+                return parsedTime.ToString(@"HH\:mm", CultureInfo.InvariantCulture);
 
             return trimmed;
         }
