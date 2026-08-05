@@ -91,6 +91,7 @@ namespace MBS_Economic_Calendar_Flags
         private static DateTime cacheFetchedAtUtc = DateTime.MinValue;
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
         private static readonly TimeSpan ActualRefreshThrottle = TimeSpan.FromMinutes(1);
+        private static readonly TimeSpan ActualRefreshDelay = TimeSpan.FromSeconds(10);
         private const int FlagMarkerSize = 22;
         private const int FlagInnerPadding = 2;
         private const int FlagImageSize = FlagMarkerSize - FlagInnerPadding * 2;
@@ -111,6 +112,7 @@ namespace MBS_Economic_Calendar_Flags
         private const string XmlFeedUrl = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
         private int refreshInProgress;
         private DateTime lastActualRefreshAttemptUtc = DateTime.MinValue;
+        private readonly Dictionary<string, DateTime> pendingActualRefreshes = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Indicator's constructor. Contains general information: name, description, LineSeries etc. 
@@ -870,13 +872,35 @@ namespace MBS_Economic_Calendar_Flags
                 return;
 
             var nowEastern = GetEasternNow();
-            var needsRefresh = visibleEvents.Any(ev =>
-                !string.IsNullOrWhiteSpace(ev.Event) &&
-                string.IsNullOrWhiteSpace(ev.Actual) &&
-                TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern) &&
-                eventDateTimeEastern <= nowEastern);
+            var dueEvents = new List<ForexEvent>();
+            lock (lockObject)
+            {
+                foreach (var ev in visibleEvents)
+                {
+                    if (string.IsNullOrWhiteSpace(ev.Event) ||
+                        !string.IsNullOrWhiteSpace(ev.Actual) ||
+                        !TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern) ||
+                        eventDateTimeEastern > nowEastern)
+                    {
+                        continue;
+                    }
 
-            if (!needsRefresh)
+                    var key = GetEventRefreshKey(ev);
+                    if (!pendingActualRefreshes.TryGetValue(key, out var requestedAtUtc))
+                    {
+                        pendingActualRefreshes[key] = DateTime.UtcNow;
+                        continue;
+                    }
+
+                    if (DateTime.UtcNow - requestedAtUtc < ActualRefreshDelay)
+                        continue;
+
+                    pendingActualRefreshes[key] = DateTime.UtcNow;
+                    dueEvents.Add(ev);
+                }
+            }
+
+            if (!dueEvents.Any())
                 return;
 
             if (Interlocked.CompareExchange(ref refreshInProgress, 1, 0) != 0)
@@ -892,9 +916,17 @@ namespace MBS_Economic_Calendar_Flags
                 finally
                 {
                     Interlocked.Exchange(ref refreshInProgress, 0);
+                    lock (lockObject)
+                    {
+                        foreach (var ev in dueEvents)
+                            pendingActualRefreshes.Remove(GetEventRefreshKey(ev));
+                    }
                 }
             });
         }
+
+        private static string GetEventRefreshKey(ForexEvent ev) =>
+            $"{ev.Date:yyyy-MM-dd}|{ev.Time}|{NormalizeCurrencyCode(ev.Currency)}|{ev.Event}";
 
         private async Task RefreshEventsAsync(bool forceRefresh)
         {
