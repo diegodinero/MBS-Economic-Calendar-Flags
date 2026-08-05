@@ -98,8 +98,8 @@ namespace MBS_Economic_Calendar_Flags
         private const int FlagImageSize = FlagMarkerSize - FlagInnerPadding * 2;
         private const int FlagStackSpacing = 4;
         private const int FlagBottomMargin = 2;
-        private const int EventCardWidth = 235;
-        private const int EventCardPadding = 6;
+        private const int EventCardWidth = 305;
+        private const int EventCardPadding = 8;
         private const int NewsTableWidth = 799;
         private const int NewsDateColWidth = 110;
         private const int NewsTimeColWidth = 60;
@@ -627,14 +627,15 @@ namespace MBS_Economic_Calendar_Flags
         {
             int lh = font.Height;
             int blh = boldFont.Height;
-            return EventCardPadding + lh + 2 + blh + 2 + lh + 8 + lh + 2 + lh + EventCardPadding;
+            return EventCardPadding + lh + 4 + blh + 4 + lh + 10 + lh + 4 + lh + EventCardPadding;
         }
 
         private void DrawEventCard(Graphics graphics, ForexEvent ev, int x, int y)
         {
             int cardWidth = EventCardWidth;
             int cardPad = EventCardPadding;
-            int colWidth = (cardWidth - cardPad * 2) / 3;
+            int usableWidth = cardWidth - cardPad * 2;
+            int colWidth = usableWidth / 3;
 
             Brush impactBrush =
                 ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Brushes.Red :
@@ -661,22 +662,22 @@ namespace MBS_Economic_Calendar_Flags
             int cy = y + cardPad;
 
             graphics.DrawString(GetCountryDisplayName(ev.Currency), font, Brushes.DarkGray, x + cardPad, cy);
-            cy += lh + 2;
+            cy += lh + 4;
 
             graphics.DrawString(ev.Event, boldFont, impactBrush, x + cardPad, cy);
-            cy += blh + 2;
+            cy += blh + 4;
 
             string dateTimeStr = GetDisplayDateTime(ev);
             graphics.DrawString(dateTimeStr, font, Brushes.DarkGray, x + cardPad, cy);
-            cy += lh + 4;
+            cy += lh + 6;
 
             graphics.DrawLine(Pens.DimGray, x + cardPad, cy, x + cardWidth - cardPad, cy);
-            cy += 4;
+            cy += 6;
 
             graphics.DrawString("Actual", font, Brushes.DarkGray, x + cardPad, cy);
             graphics.DrawString("Forecast", font, Brushes.DarkGray, x + cardPad + colWidth, cy);
             graphics.DrawString("Previous", font, Brushes.DarkGray, x + cardPad + colWidth * 2, cy);
-            cy += lh + 2;
+            cy += lh + 4;
 
             graphics.DrawString(string.IsNullOrEmpty(ev.Actual) ? "—" : ev.Actual, boldFont, Brushes.White, x + cardPad, cy);
             graphics.DrawString(string.IsNullOrEmpty(ev.Forecast) ? "—" : ev.Forecast, font, Brushes.White, x + cardPad + colWidth, cy);
