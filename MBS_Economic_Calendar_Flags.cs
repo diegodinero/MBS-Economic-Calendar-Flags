@@ -979,10 +979,13 @@ namespace MBS_Economic_Calendar_Flags
 
         private static string GetEventRefreshKey(ForexEvent ev) =>
             // Use a low-collision separator for external feed fields.
-            $"{ev.Date:yyyy-MM-dd}\u001f{NormalizeTimeComponent(ev.Time)}\u001f{NormalizeCurrencyCode(ev.Currency)}\u001f{NormalizeEventComponent(ev.Event)}";
+            $"{ev.Date:yyyy-MM-dd}\u001f{NormalizeTimeComponent(ev.Time)}\u001f{NormalizeCurrencyCode(ev.Currency)}\u001f{NormalizeEventComponent(ev.Event)}\u001f{NormalizeImpactComponent(ev.Impact)}";
 
         private static string NormalizeEventComponent(string? eventName) =>
             string.IsNullOrWhiteSpace(eventName) ? string.Empty : eventName.Trim().ToLowerInvariant();
+
+        private static string NormalizeImpactComponent(string? impact) =>
+            string.IsNullOrWhiteSpace(impact) ? string.Empty : impact.Trim().ToLowerInvariant();
 
         private static string NormalizeTimeComponent(string? time)
         {
