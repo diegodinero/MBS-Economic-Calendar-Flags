@@ -100,6 +100,11 @@ namespace MBS_Economic_Calendar_Flags
         private const int FlagBottomMargin = 2;
         private const int EventCardWidth = 305;
         private const int EventCardPadding = 8;
+        private const int EventCardTitleSpacing = 4;
+        private const int EventCardEventSpacing = 4;
+        private const int EventCardDateSpacing = 6;
+        private const int EventCardDividerSpacing = 6;
+        private const int EventCardColumnSpacing = 4;
         private const int NewsTableWidth = 799;
         private const int NewsDateColWidth = 110;
         private const int NewsTimeColWidth = 60;
@@ -627,7 +632,7 @@ namespace MBS_Economic_Calendar_Flags
         {
             int lh = font.Height;
             int blh = boldFont.Height;
-            return EventCardPadding + lh + 4 + blh + 4 + lh + 10 + lh + 4 + lh + EventCardPadding;
+            return EventCardPadding + lh + EventCardTitleSpacing + blh + EventCardEventSpacing + lh + EventCardDateSpacing + lh + EventCardDividerSpacing + lh + EventCardPadding;
         }
 
         private void DrawEventCard(Graphics graphics, ForexEvent ev, int x, int y)
@@ -662,22 +667,22 @@ namespace MBS_Economic_Calendar_Flags
             int cy = y + cardPad;
 
             graphics.DrawString(GetCountryDisplayName(ev.Currency), font, Brushes.DarkGray, x + cardPad, cy);
-            cy += lh + 4;
+            cy += lh + EventCardTitleSpacing;
 
             graphics.DrawString(ev.Event, boldFont, impactBrush, x + cardPad, cy);
-            cy += blh + 4;
+            cy += blh + EventCardEventSpacing;
 
             string dateTimeStr = GetDisplayDateTime(ev);
             graphics.DrawString(dateTimeStr, font, Brushes.DarkGray, x + cardPad, cy);
-            cy += lh + 6;
+            cy += lh + EventCardDateSpacing;
 
             graphics.DrawLine(Pens.DimGray, x + cardPad, cy, x + cardWidth - cardPad, cy);
-            cy += 6;
+            cy += EventCardDividerSpacing;
 
             graphics.DrawString("Actual", font, Brushes.DarkGray, x + cardPad, cy);
             graphics.DrawString("Forecast", font, Brushes.DarkGray, x + cardPad + colWidth, cy);
             graphics.DrawString("Previous", font, Brushes.DarkGray, x + cardPad + colWidth * 2, cy);
-            cy += lh + 4;
+            cy += lh + EventCardColumnSpacing;
 
             graphics.DrawString(string.IsNullOrEmpty(ev.Actual) ? "—" : ev.Actual, boldFont, Brushes.White, x + cardPad, cy);
             graphics.DrawString(string.IsNullOrEmpty(ev.Forecast) ? "—" : ev.Forecast, font, Brushes.White, x + cardPad + colWidth, cy);
@@ -894,19 +899,23 @@ namespace MBS_Economic_Calendar_Flags
                     {
                         pendingActualRefreshes[key] = nowUtc;
                         pendingActualRefreshFirstSeen[key] = nowUtc;
-                        continue;
+                        requestedAtUtc = nowUtc;
                     }
-
-                    if (pendingActualRefreshFirstSeen.TryGetValue(key, out var firstSeenUtc) &&
-                        nowUtc - firstSeenUtc > ActualRefreshMaxAge)
+                    else
                     {
-                        pendingActualRefreshes.Remove(key);
-                        pendingActualRefreshFirstSeen.Remove(key);
-                        continue;
-                    }
+                        if (pendingActualRefreshFirstSeen.TryGetValue(key, out var firstSeenUtc) &&
+                            nowUtc - firstSeenUtc > ActualRefreshMaxAge)
+                        {
+                            pendingActualRefreshes.Remove(key);
+                            pendingActualRefreshFirstSeen.Remove(key);
+                            continue;
+                        }
 
-                    if (nowUtc - requestedAtUtc < ActualRefreshDelay)
-                        continue;
+                        if (nowUtc - requestedAtUtc < ActualRefreshDelay)
+                            continue;
+
+                        pendingActualRefreshes[key] = nowUtc;
+                    }
 
                     dueEvents.Add(ev);
                 }
@@ -970,17 +979,21 @@ namespace MBS_Economic_Calendar_Flags
 
         private static string GetEventRefreshKey(ForexEvent ev) =>
             // Use a low-collision separator for external feed fields.
-            $"{ev.Date:yyyy-MM-dd}\u001f{NormalizeTimeComponent(ev.Time)}\u001f{NormalizeCurrencyCode(ev.Currency)}\u001f{ev.Event}";
+            $"{ev.Date:yyyy-MM-dd}\u001f{NormalizeTimeComponent(ev.Time)}\u001f{NormalizeCurrencyCode(ev.Currency)}\u001f{NormalizeEventComponent(ev.Event)}";
+
+        private static string NormalizeEventComponent(string? eventName) =>
+            string.IsNullOrWhiteSpace(eventName) ? string.Empty : eventName.Trim().ToLowerInvariant();
 
         private static string NormalizeTimeComponent(string? time)
         {
             if (string.IsNullOrWhiteSpace(time))
                 return string.Empty;
 
-            if (DateTime.TryParse(time, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsed))
-                return parsed.ToString("HH:mm", CultureInfo.InvariantCulture);
+            var trimmed = time.Trim();
+            if (TimeSpan.TryParse(trimmed, CultureInfo.InvariantCulture, out var parsedTime))
+                return parsedTime.ToString(@"hh\:mm", CultureInfo.InvariantCulture);
 
-            return time.Trim();
+            return trimmed;
         }
 
         private async Task RefreshEventsAsync(bool forceRefresh)
