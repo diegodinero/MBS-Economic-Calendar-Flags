@@ -1125,10 +1125,31 @@ namespace MBS_Economic_Calendar_Flags
                         ? timePart.ToString("HH:mm", CultureInfo.InvariantCulture)
                         : rawTime;
 
+                    DateTime? eventDateTimeUtc = null;
+                    DateTime? eventDateTimeEastern = null;
+                    if (DateTime.TryParseExact(
+                        rawTime,
+                        "h:mmtt",
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.None,
+                        out timePart
+                    ))
+                    {
+                        var parsedUtc = DateTime.SpecifyKind(
+                            date.Date.AddHours(timePart.Hour).AddMinutes(timePart.Minute),
+                            DateTimeKind.Utc);
+                        eventDateTimeUtc = parsedUtc;
+                        eventDateTimeEastern = DateTime.SpecifyKind(
+                            TimeZoneInfo.ConvertTimeFromUtc(parsedUtc, EasternTimeZone),
+                            DateTimeKind.Unspecified);
+                    }
+
                     return new ForexEvent
                     {
                         Date = date,
                         Time = normalizedTime,
+                        EventDateTimeUtc = eventDateTimeUtc,
+                        EventDateTimeEastern = eventDateTimeEastern,
                         Currency = x.Element("country")!.Value.Trim(),
                         Event = x.Element("title")!.Value.Trim(),
                         Impact = x.Element("impact")!.Value.Trim(),
@@ -1147,6 +1168,8 @@ namespace MBS_Economic_Calendar_Flags
                 {
                     Date = ev.Date,
                     Time = ev.Time,
+                    EventDateTimeUtc = ev.EventDateTimeUtc,
+                    EventDateTimeEastern = ev.EventDateTimeEastern,
                     Currency = ev.Currency,
                     Event = ev.Event,
                     Impact = ev.Impact,
@@ -1289,6 +1312,12 @@ namespace MBS_Economic_Calendar_Flags
         private static bool TryGetEventDateTimeEastern(ForexEvent forexEvent, out DateTime eventDateTimeEastern)
         {
             eventDateTimeEastern = default;
+            if (forexEvent.EventDateTimeEastern.HasValue)
+            {
+                eventDateTimeEastern = forexEvent.EventDateTimeEastern.Value;
+                return true;
+            }
+
             if (!TryGetEventDateTimeUtc(forexEvent, out var eventDateTimeUtc))
                 return false;
 
@@ -1299,6 +1328,12 @@ namespace MBS_Economic_Calendar_Flags
         private static bool TryGetEventChartDateTime(ForexEvent forexEvent, out DateTime eventChartDateTime)
         {
             eventChartDateTime = default;
+            if (forexEvent.EventDateTimeUtc.HasValue)
+            {
+                eventChartDateTime = DateTime.SpecifyKind(forexEvent.EventDateTimeUtc.Value, DateTimeKind.Unspecified);
+                return true;
+            }
+
             if (!TryGetFeedEventDateTime(forexEvent, out var feedEventDateTime))
                 return false;
 
@@ -1330,6 +1365,12 @@ namespace MBS_Economic_Calendar_Flags
         private static bool TryGetEventDateTimeUtc(ForexEvent forexEvent, out DateTime eventDateTimeUtc)
         {
             eventDateTimeUtc = default;
+            if (forexEvent.EventDateTimeUtc.HasValue)
+            {
+                eventDateTimeUtc = DateTime.SpecifyKind(forexEvent.EventDateTimeUtc.Value, DateTimeKind.Utc);
+                return true;
+            }
+
             if (!TryGetFeedEventDateTime(forexEvent, out var eventDateTimeFromFeed))
                 return false;
 
@@ -1393,6 +1434,8 @@ namespace MBS_Economic_Calendar_Flags
         {
             public DateTime Date { get; set; }
             public string Time { get; set; } = "";
+            public DateTime? EventDateTimeUtc { get; set; }
+            public DateTime? EventDateTimeEastern { get; set; }
             public string Currency { get; set; } = "";
             public string Event { get; set; } = "";
             public string Impact { get; set; } = "";
