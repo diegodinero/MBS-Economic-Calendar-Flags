@@ -228,8 +228,8 @@ namespace MBS_Economic_Calendar_Flags
                         {
                             var referenceDateTimeEastern = GetReferenceDateTimeEastern();
                             temp = temp
-                                .Where(e => !TryGetEventDateTimeEastern(e, out var eventDateTimeEastern)
-                                        || eventDateTimeEastern >= referenceDateTimeEastern)
+                                .Where(e => TryGetEventDateTimeEastern(e, out var eventDateTimeEastern)
+                                        && eventDateTimeEastern >= referenceDateTimeEastern)
                                 .ToList();
                         }
                     }
@@ -247,8 +247,8 @@ namespace MBS_Economic_Calendar_Flags
                         {
                             var referenceDateTimeEastern = GetReferenceDateTimeEastern();
                             temp = temp
-                                .Where(e => !TryGetEventDateTimeEastern(e, out var eventDateTimeEastern)
-                                        || eventDateTimeEastern >= referenceDateTimeEastern)
+                                .Where(e => TryGetEventDateTimeEastern(e, out var eventDateTimeEastern)
+                                        && eventDateTimeEastern >= referenceDateTimeEastern)
                                 .ToList();
                         }
                     }
