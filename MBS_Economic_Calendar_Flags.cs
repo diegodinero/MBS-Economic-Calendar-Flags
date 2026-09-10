@@ -316,7 +316,7 @@ namespace MBS_Economic_Calendar_Flags
                 {
                     g.DrawString($"Showing {forexEvents.Count} events", font, Brushes.Yellow, x + 2, y + 2);
                     y += font.Height + 6;
-                    DrawNewsTable(g, forexEvents.OrderBy(ParseEventDateTimeForSorting), x + 2, y, rect.Right, rect.Bottom);
+                    DrawNewsTable(g, forexEvents.OrderBy(ParseEventDisplayDateTimeForSorting), x + 2, y, rect.Right, rect.Bottom);
                 }
             }
 
@@ -331,7 +331,7 @@ namespace MBS_Economic_Calendar_Flags
                     .CoordinatesConverter;
 
                 // Collapse same-timestamp events to one line so the visible line uses the highest impact.
-                foreach (var ev in GetHighestImpactEventsByTime(chartOverlayEvents))
+                foreach (var ev in GetHighestImpactEventsByChartTime(chartOverlayEvents))
                 {
                     // Pick line color
                     Pen linePen =
@@ -341,11 +341,11 @@ namespace MBS_Economic_Calendar_Flags
                         Pens.White;
 
                     // Convert event time
-                    if (TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern))
+                    if (TryGetEventChartDateTime(ev, out var eventChartDateTime))
                     {
                         if (showVerticalLines)
                         {
-                            float xCoord = (float)conv.GetChartX(eventDateTimeEastern);
+                            float xCoord = (float)conv.GetChartX(eventChartDateTime);
                             g.DrawLine(linePen, xCoord, rect.Top, xCoord, rect.Bottom);
                         }
                     }
@@ -371,13 +371,13 @@ namespace MBS_Economic_Calendar_Flags
             var groupedEvents = new SortedDictionary<DateTime, List<ForexEvent>>();
             foreach (var ev in events)
             {
-                if (!TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern))
+                if (!TryGetEventChartDateTime(ev, out var eventChartDateTime))
                     continue;
 
-                if (!groupedEvents.TryGetValue(eventDateTimeEastern, out var eventsAtTime))
+                if (!groupedEvents.TryGetValue(eventChartDateTime, out var eventsAtTime))
                 {
                     eventsAtTime = new List<ForexEvent>();
-                    groupedEvents[eventDateTimeEastern] = eventsAtTime;
+                    groupedEvents[eventChartDateTime] = eventsAtTime;
                 }
 
                 eventsAtTime.Add(ev);
@@ -724,7 +724,7 @@ namespace MBS_Economic_Calendar_Flags
         }
 
 
-        private static DateTime ParseEventDateTimeForSorting(ForexEvent forexEvent)
+        private static DateTime ParseEventDisplayDateTimeForSorting(ForexEvent forexEvent)
         {
             if (TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern))
                 return eventDateTimeEastern;
@@ -732,10 +732,18 @@ namespace MBS_Economic_Calendar_Flags
             return forexEvent.Date.Date;
         }
 
-        private static IEnumerable<ForexEvent> GetHighestImpactEventsByTime(IEnumerable<ForexEvent> events)
+        private static DateTime ParseEventChartDateTimeForSorting(ForexEvent forexEvent)
+        {
+            if (TryGetEventChartDateTime(forexEvent, out var eventChartDateTime))
+                return eventChartDateTime;
+
+            return forexEvent.Date.Date;
+        }
+
+        private static IEnumerable<ForexEvent> GetHighestImpactEventsByChartTime(IEnumerable<ForexEvent> events)
         {
             return events
-                .GroupBy(ParseEventDateTimeForSorting)
+                .GroupBy(ParseEventChartDateTimeForSorting)
                 .OrderBy(group => group.Key)
                 .Select(group => group
                     .OrderBy(ev => GetImpactPriority(ev.Impact))
@@ -1285,6 +1293,16 @@ namespace MBS_Economic_Calendar_Flags
                 return false;
 
             eventDateTimeEastern = ConvertEventTimeUtcToEastern(eventDateTimeUtc);
+            return true;
+        }
+
+        private static bool TryGetEventChartDateTime(ForexEvent forexEvent, out DateTime eventChartDateTime)
+        {
+            eventChartDateTime = default;
+            if (!TryGetFeedEventDateTime(forexEvent, out var feedEventDateTime))
+                return false;
+
+            eventChartDateTime = feedEventDateTime;
             return true;
         }
 
