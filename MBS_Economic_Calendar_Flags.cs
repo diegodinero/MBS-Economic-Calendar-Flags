@@ -1287,7 +1287,16 @@ namespace MBS_Economic_Calendar_Flags
         private static bool TryGetEventDateTimeEastern(ForexEvent forexEvent, out DateTime eventDateTimeEastern)
         {
             eventDateTimeEastern = default;
+            if (!TryGetEventDateTimeUtc(forexEvent, out var eventDateTimeUtc))
+                return false;
 
+            eventDateTimeEastern = ConvertEventTimeUtcToEastern(eventDateTimeUtc);
+            return true;
+        }
+
+        private static bool TryGetFeedEventDateTime(ForexEvent forexEvent, out DateTime feedEventDateTime)
+        {
+            feedEventDateTime = default;
             if (!DateTime.TryParseExact(
                 forexEvent.Time,
                 "HH:mm",
@@ -1298,24 +1307,22 @@ namespace MBS_Economic_Calendar_Flags
                 return false;
             }
 
-            var easternDateTime = DateTime.SpecifyKind(
+            feedEventDateTime = DateTime.SpecifyKind(
                 forexEvent.Date.Date
                     .AddHours(eventTime.Hour)
                     .AddMinutes(eventTime.Minute),
                 DateTimeKind.Unspecified);
-
-            eventDateTimeEastern = DateTime.SpecifyKind(easternDateTime, DateTimeKind.Unspecified);
             return true;
         }
 
         private static bool TryGetEventDateTimeUtc(ForexEvent forexEvent, out DateTime eventDateTimeUtc)
         {
             eventDateTimeUtc = default;
-            if (!TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeFromFeed))
+            if (!TryGetFeedEventDateTime(forexEvent, out var eventDateTimeFromFeed))
                 return false;
 
-            // Forex Factory feed timestamps are UTC; chart rendering keeps the raw feed timestamp,
-            // while date filtering and display convert that UTC timestamp to Eastern.
+            // Forex Factory feed timestamps are UTC; other helpers convert this UTC value to Eastern
+            // for chart overlay placement, filtering, and display.
             eventDateTimeUtc = DateTime.SpecifyKind(eventDateTimeFromFeed, DateTimeKind.Utc);
             return true;
         }
