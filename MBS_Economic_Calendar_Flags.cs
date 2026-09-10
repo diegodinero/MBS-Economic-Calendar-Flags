@@ -1288,9 +1288,13 @@ namespace MBS_Economic_Calendar_Flags
 
             var referenceDateTimeEastern = GetReferenceDateTimeEastern();
             var nowEastern = GetEasternNow();
-            return referenceDateTimeEastern.Date == nowEastern.Date
-                ? nowEastern.Date
-                : referenceDateTimeEastern.Date;
+            if (referenceDateTimeEastern <= nowEastern &&
+                nowEastern - referenceDateTimeEastern < TimeSpan.FromHours(24))
+            {
+                return nowEastern.Date;
+            }
+
+            return referenceDateTimeEastern.Date;
         }
 
         private static DateTime GetEventDateEastern(ForexEvent forexEvent)
