@@ -222,6 +222,16 @@ namespace MBS_Economic_Calendar_Flags
                         temp = allEvents.Where(e => e.Date.Date == chartDate).ToList();
 
                         Debug.WriteLine($"[EconomicEventsIndicator] Events matching {chartDate:MM/dd/yyyy}: {temp.Count}");
+
+                        // Apply showPastEvents filter for current chart date
+                        if (!showPastEvents)
+                        {
+                            var referenceDateTimeEastern = GetReferenceDateTimeEastern();
+                            temp = temp
+                                .Where(e => !TryGetEventDateTimeEastern(e, out var eventDateTimeEastern)
+                                        || eventDateTimeEastern >= referenceDateTimeEastern)
+                                .ToList();
+                        }
                     }
                     else
                     {
@@ -836,8 +846,7 @@ namespace MBS_Economic_Calendar_Flags
                 settings.Add(new SettingItemBoolean("showVerticalLines", showVerticalLines) { Text = "Show Vertical Lines" });
                 settings.Add(new SettingItemBoolean("showPastEvents", showPastEvents)
                 {
-                    Text = "Show Past Events",
-                    Relation = new SettingItemRelationVisibility("dateMode", new object[] { siWeek })
+                    Text = "Show Past Events"
                 });
 
 
