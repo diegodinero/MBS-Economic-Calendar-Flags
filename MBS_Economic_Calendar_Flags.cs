@@ -358,7 +358,7 @@ namespace MBS_Economic_Calendar_Flags
                     .Windows[args.WindowIndex]
                     .CoordinatesConverter;
 
-                foreach (var ev in forexEvents.OrderBy(ParseEventDateTimeForSorting))
+                foreach (var ev in GetHighestImpactEventsByTime(forexEvents))
                 {
                     // Pick line color
                     Pen linePen =
@@ -755,6 +755,18 @@ namespace MBS_Economic_Calendar_Flags
                 return eventDateTimeEastern;
 
             return forexEvent.Date.Date;
+        }
+
+        private static IEnumerable<ForexEvent> GetHighestImpactEventsByTime(IEnumerable<ForexEvent> events)
+        {
+            return events
+                .GroupBy(ParseEventDateTimeForSorting)
+                .OrderBy(group => group.Key)
+                .Select(group => group
+                    .OrderBy(ev => GetImpactPriority(ev.Impact))
+                    .ThenBy(ev => NormalizeCurrencyCode(ev.Currency), StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(ev => ev.Event, StringComparer.OrdinalIgnoreCase)
+                    .First());
         }
 
         public override void Dispose()
