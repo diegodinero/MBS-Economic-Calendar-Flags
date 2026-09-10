@@ -1339,7 +1339,10 @@ namespace MBS_Economic_Calendar_Flags
                 }
                 catch
                 {
-                    return eventDateTimeUtc.ToString("HH:mm", CultureInfo.InvariantCulture);
+                    if (TryGetEventDateTimeEastern(forexEvent, out var fallbackEventDateTimeEastern))
+                        return fallbackEventDateTimeEastern.ToString("HH:mm", CultureInfo.InvariantCulture);
+
+                    return forexEvent.Time;
                 }
             }
 
@@ -1357,7 +1360,10 @@ namespace MBS_Economic_Calendar_Flags
                 }
                 catch
                 {
-                    return eventDateTimeUtc.ToString("dd MMM yy   HH:mm", CultureInfo.InvariantCulture);
+                    if (TryGetEventDateTimeEastern(forexEvent, out var fallbackEventDateTimeEastern))
+                        return fallbackEventDateTimeEastern.ToString("dd MMM yy   HH:mm", CultureInfo.InvariantCulture);
+
+                    return forexEvent.Date.ToString("dd MMM yy", CultureInfo.InvariantCulture) + "   " + forexEvent.Time;
                 }
             }
 
