@@ -1302,12 +1302,14 @@ namespace MBS_Economic_Calendar_Flags
                 return false;
             }
 
-            var easternDateTime = DateTime.SpecifyKind(
+            // Parsed time from feed is UTC; convert from UTC to Eastern (handles DST)
+            var utcDateTime = DateTime.SpecifyKind(
                 forexEvent.Date.Date
                     .AddHours(eventTime.Hour)
                     .AddMinutes(eventTime.Minute),
-                DateTimeKind.Unspecified);
+                DateTimeKind.Utc);
 
+            var easternDateTime = TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, EasternTimeZone);
             eventDateTimeEastern = DateTime.SpecifyKind(easternDateTime, DateTimeKind.Unspecified);
             return true;
         }
@@ -1316,17 +1318,7 @@ namespace MBS_Economic_Calendar_Flags
         {
             if (TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern))
             {
-                try
-                {
-                    // Parsed time from feed is UTC; convert from UTC to Eastern (handles DST)
-                    var utc = DateTime.SpecifyKind(eventDateTimeEastern, DateTimeKind.Utc);
-                    var eastern = TimeZoneInfo.ConvertTimeFromUtc(utc, EasternTimeZone);
-                    return eastern.ToString("HH:mm", CultureInfo.InvariantCulture);
-                }
-                catch
-                {
-                    return eventDateTimeEastern.ToString("HH:mm", CultureInfo.InvariantCulture);
-                }
+                return eventDateTimeEastern.ToString("HH:mm", CultureInfo.InvariantCulture);
             }
 
             return forexEvent.Time;
@@ -1336,16 +1328,7 @@ namespace MBS_Economic_Calendar_Flags
         {
             if (TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern))
             {
-                try
-                {
-                    var utc = DateTime.SpecifyKind(eventDateTimeEastern, DateTimeKind.Utc);
-                    var eastern = TimeZoneInfo.ConvertTimeFromUtc(utc, EasternTimeZone);
-                    return eastern.ToString("dd MMM yy   HH:mm", CultureInfo.InvariantCulture);
-                }
-                catch
-                {
-                    return eventDateTimeEastern.ToString("dd MMM yy   HH:mm", CultureInfo.InvariantCulture);
-                }
+                return eventDateTimeEastern.ToString("dd MMM yy   HH:mm", CultureInfo.InvariantCulture);
             }
 
             return forexEvent.Date.ToString("dd MMM yy", CultureInfo.InvariantCulture) + "   " + forexEvent.Time;
