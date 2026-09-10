@@ -13,10 +13,10 @@
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <OutputPath>C:\Users\LaDarrious\Desktop\Quantower\TradingPlatform\v1.146.3\..\..\Settings\Scripts\Indicators\MBS Economic Calendar Flags</OutputPath>
+    <OutputPath>C:\Users\LaDarrious\Desktop\Quantower\TradingPlatform\v1.147.2\..\..\Settings\Scripts\Indicators\MBS Economic Calendar Flags</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <OutputPath>C:\Users\LaDarrious\Desktop\Quantower\TradingPlatform\v1.146.3\..\..\Settings\Scripts\Indicators\MBS Economic Calendar Flags</OutputPath>
+    <OutputPath>C:\Users\LaDarrious\Desktop\Quantower\TradingPlatform\v1.147.2\..\..\Settings\Scripts\Indicators\MBS Economic Calendar Flags</OutputPath>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="MBS.IndicatorHost\**" />
@@ -31,7 +31,7 @@
   </ItemGroup>
   <ItemGroup>
     <Reference Include="TradingPlatform.BusinessLayer">
-      <HintPath>C:\Users\LaDarrious\Desktop\Quantower\TradingPlatform\v1.146.3\bin\TradingPlatform.BusinessLayer.dll</HintPath>
+      <HintPath>C:\Users\LaDarrious\Desktop\Quantower\TradingPlatform\v1.147.2\bin\TradingPlatform.BusinessLayer.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>
