@@ -323,15 +323,14 @@ namespace MBS_Economic_Calendar_Flags
             TryRefreshActuals(forexEvents);
 
             // ✅ Event rendering section
-            var chartOverlayEvents = GetChartOverlayEvents();
-            if (chartOverlayEvents != null)
+            if (forexEvents != null)
             {
                 var conv = CurrentChart
                     .Windows[args.WindowIndex]
                     .CoordinatesConverter;
 
                 // Collapse same-timestamp events to one line so the visible line uses the highest impact.
-                foreach (var ev in GetHighestImpactEventsByChartTime(chartOverlayEvents))
+                foreach (var ev in GetHighestImpactEventsByChartTime(forexEvents))
                 {
                     // Pick line color
                     Pen linePen =
@@ -352,7 +351,7 @@ namespace MBS_Economic_Calendar_Flags
 
                 }
 
-                var hoveredFlag = DrawEventFlags(chartOverlayEvents, g, rect, eventTimeEastern => (float)conv.GetChartX(eventTimeEastern), args.MousePosition);
+                var hoveredFlag = DrawEventFlags(forexEvents, g, rect, eventTimeEastern => (float)conv.GetChartX(eventTimeEastern), args.MousePosition);
                 if (showHoverInfo && hoveredFlag != null)
                 {
                     int cardHeight = GetEventCardHeight();
@@ -420,11 +419,6 @@ namespace MBS_Economic_Calendar_Flags
             }
 
             return hoveredEvent;
-        }
-
-        private IReadOnlyList<ForexEvent>? GetChartOverlayEvents()
-        {
-            return forexEvents;
         }
 
         private void DrawNewsTable(Graphics graphics, IEnumerable<ForexEvent> events, int x, int y, int right, int bottom)
@@ -1328,16 +1322,16 @@ namespace MBS_Economic_Calendar_Flags
         private static bool TryGetEventChartDateTime(ForexEvent forexEvent, out DateTime eventChartDateTime)
         {
             eventChartDateTime = default;
-            if (forexEvent.EventDateTimeUtc.HasValue)
+            if (forexEvent.EventDateTimeEastern.HasValue)
             {
-                eventChartDateTime = DateTime.SpecifyKind(forexEvent.EventDateTimeUtc.Value, DateTimeKind.Unspecified);
+                eventChartDateTime = forexEvent.EventDateTimeEastern.Value;
                 return true;
             }
 
-            if (!TryGetFeedEventDateTime(forexEvent, out var feedEventDateTime))
+            if (!TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern))
                 return false;
 
-            eventChartDateTime = feedEventDateTime;
+            eventChartDateTime = eventDateTimeEastern;
             return true;
         }
 
