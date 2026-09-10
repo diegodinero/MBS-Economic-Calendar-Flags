@@ -1257,11 +1257,7 @@ namespace MBS_Economic_Calendar_Flags
             if (chartDateTime == DateTime.MinValue || chartDateTime.Year < 2000)
                 return GetEasternNow().Date;
 
-            var referenceDateTimeEastern = GetReferenceDateTimeEastern();
-            var nowEastern = GetEasternNow();
-            return Math.Abs((nowEastern - referenceDateTimeEastern).TotalHours) < 24
-                ? nowEastern.Date
-                : referenceDateTimeEastern.Date;
+            return GetReferenceDateTimeEastern().Date;
         }
 
         private static DateTime GetEventDateEastern(ForexEvent forexEvent)
