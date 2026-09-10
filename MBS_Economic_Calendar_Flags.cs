@@ -424,17 +424,7 @@ namespace MBS_Economic_Calendar_Flags
 
         private IReadOnlyList<ForexEvent>? GetChartOverlayEvents()
         {
-            if (forexEvents == null)
-                return null;
-
-            if (dateMode != 2 || !showPastEvents)
-                return forexEvents;
-
-            var referenceDateTimeEastern = GetReferenceDateTimeEastern();
-            return forexEvents
-                .Where(e => !TryGetEventDateTimeEastern(e, out var eventDateTimeEastern)
-                    || eventDateTimeEastern >= referenceDateTimeEastern)
-                .ToList();
+            return forexEvents;
         }
 
         private void DrawNewsTable(Graphics graphics, IEnumerable<ForexEvent> events, int x, int y, int right, int bottom)
@@ -1271,7 +1261,11 @@ namespace MBS_Economic_Calendar_Flags
             if (chartDateTime == DateTime.MinValue || chartDateTime.Year < 2000)
                 return GetEasternNow().Date;
 
-            return GetReferenceDateTimeEastern().Date;
+            var referenceDateTimeEastern = GetReferenceDateTimeEastern();
+            var nowEastern = GetEasternNow();
+            return referenceDateTimeEastern.Date == nowEastern.Date
+                ? nowEastern.Date
+                : referenceDateTimeEastern.Date;
         }
 
         private static DateTime GetEventDateEastern(ForexEvent forexEvent)
