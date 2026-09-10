@@ -323,14 +323,15 @@ namespace MBS_Economic_Calendar_Flags
             TryRefreshActuals(forexEvents);
 
             // ✅ Event rendering section
-            if (forexEvents != null)
+            var chartOverlayEvents = GetChartOverlayEvents();
+            if (chartOverlayEvents != null)
             {
                 var conv = CurrentChart
                     .Windows[args.WindowIndex]
                     .CoordinatesConverter;
 
                 // Collapse same-timestamp events to one line so the visible line uses the highest impact.
-                foreach (var ev in GetHighestImpactEventsByTime(forexEvents))
+                foreach (var ev in GetHighestImpactEventsByTime(chartOverlayEvents))
                 {
                     // Pick line color
                     Pen linePen =
@@ -351,7 +352,7 @@ namespace MBS_Economic_Calendar_Flags
 
                 }
 
-                var hoveredFlag = DrawEventFlags(g, rect, eventTimeEastern => (float)conv.GetChartX(eventTimeEastern), args.MousePosition);
+                var hoveredFlag = DrawEventFlags(chartOverlayEvents, g, rect, eventTimeEastern => (float)conv.GetChartX(eventTimeEastern), args.MousePosition);
                 if (showHoverInfo && hoveredFlag != null)
                 {
                     int cardHeight = GetEventCardHeight();
@@ -365,13 +366,10 @@ namespace MBS_Economic_Calendar_Flags
             }
         }
 
-        private HoveredFlagInfo? DrawEventFlags(Graphics graphics, Rectangle rect, Func<DateTime, float> getChartX, Point mousePosition)
+        private HoveredFlagInfo? DrawEventFlags(IEnumerable<ForexEvent> events, Graphics graphics, Rectangle rect, Func<DateTime, float> getChartX, Point mousePosition)
         {
-            if (forexEvents == null)
-                return null;
-
             var groupedEvents = new SortedDictionary<DateTime, List<ForexEvent>>();
-            foreach (var ev in forexEvents)
+            foreach (var ev in events)
             {
                 if (!TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern))
                     continue;
@@ -422,6 +420,21 @@ namespace MBS_Economic_Calendar_Flags
             }
 
             return hoveredEvent;
+        }
+
+        private IReadOnlyList<ForexEvent>? GetChartOverlayEvents()
+        {
+            if (forexEvents == null)
+                return null;
+
+            if (dateMode != 2 || !showPastEvents)
+                return forexEvents;
+
+            var referenceDateTimeEastern = GetReferenceDateTimeEastern();
+            return forexEvents
+                .Where(e => !TryGetEventDateTimeEastern(e, out var eventDateTimeEastern)
+                    || eventDateTimeEastern >= referenceDateTimeEastern)
+                .ToList();
         }
 
         private void DrawNewsTable(Graphics graphics, IEnumerable<ForexEvent> events, int x, int y, int right, int bottom)
