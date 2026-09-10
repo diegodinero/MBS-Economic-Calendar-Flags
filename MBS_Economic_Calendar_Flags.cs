@@ -197,29 +197,13 @@ namespace MBS_Economic_Calendar_Flags
                     List<ForexEvent> temp;
                     if (dateMode == 1)
                     {
-                        // Use Today for current date when chart is at current time
-                        var now = GetEasternNow();
+                        var chartDate = GetCurrentChartDateEastern();
                         var chartDateTime = Symbol?.LastDateTime ?? DateTime.MinValue;
-
-                        // If Symbol.LastDateTime is not initialized or is showing current/recent time
-                        DateTime chartDate;
-                        if (chartDateTime == DateTime.MinValue || 
-                            chartDateTime.Year < 2000 || 
-                            Math.Abs((now - chartDateTime).TotalHours) < 24)
-                        {
-                            // Use today's date
-                            chartDate = now.Date;
-                        }
-                        else
-                        {
-                            // Use the chart's date
-                            chartDate = chartDateTime.Date;
-                        }
 
                         Debug.WriteLine($"[EconomicEventsIndicator] Chart DateTime: {chartDateTime}, Using Date: {chartDate:MM/dd/yyyy}");
                         Debug.WriteLine($"[EconomicEventsIndicator] Total events in cache: {allEvents.Count}");
 
-                        temp = allEvents.Where(e => e.Date.Date == chartDate).ToList();
+                        temp = allEvents.Where(e => GetEventDateEastern(e) == chartDate).ToList();
 
                         Debug.WriteLine($"[EconomicEventsIndicator] Events matching {chartDate:MM/dd/yyyy}: {temp.Count}");
                     }
@@ -229,8 +213,12 @@ namespace MBS_Economic_Calendar_Flags
                         var currentWeekEnd = currentWeekStart.AddDays(6);
 
                         temp = allEvents
-                            .Where(e => e.Date.Date >= currentWeekStart.Date
-                                     && e.Date.Date <= currentWeekEnd.Date)
+                            .Where(e =>
+                            {
+                                var eventDateEastern = GetEventDateEastern(e);
+                                return eventDateEastern >= currentWeekStart.Date
+                                    && eventDateEastern <= currentWeekEnd.Date;
+                            })
                             .ToList();
 
                         if (!showPastEvents)
@@ -296,24 +284,7 @@ namespace MBS_Economic_Calendar_Flags
                 string header;
                 if (dateMode == 1)
                 {
-                    var now = GetEasternNow();
-                    var chartDateTime = Symbol?.LastDateTime ?? DateTime.MinValue;
-
-                    // If Symbol.LastDateTime is not initialized or is showing current/recent time
-                    DateTime chartDate;
-                    if (chartDateTime == DateTime.MinValue || 
-                        chartDateTime.Year < 2000 || 
-                        Math.Abs((now - chartDateTime).TotalHours) < 24)
-                    {
-                        // Use today's date
-                        chartDate = now.Date;
-                    }
-                    else
-                    {
-                        // Use the chart's date
-                        chartDate = chartDateTime.Date;
-                    }
-
+                    var chartDate = GetCurrentChartDateEastern();
                     header = $"Events for {chartDate:MM/dd/yyyy}";
                 }
                 else
@@ -454,7 +425,7 @@ namespace MBS_Economic_Calendar_Flags
 
         private void DrawNewsTable(Graphics graphics, IEnumerable<ForexEvent> events, int x, int y, int right, int bottom)
         {
-            var groups = events.GroupBy(ev => ev.Date.Date).ToList();
+            var groups = events.GroupBy(GetEventDateEastern).ToList();
             if (groups.Count == 0)
                 return;
 
@@ -1277,6 +1248,36 @@ namespace MBS_Economic_Calendar_Flags
             }
 
             return DateTime.SpecifyKind(referenceDateTime, DateTimeKind.Unspecified);
+        }
+
+        private DateTime GetCurrentChartDateEastern()
+        {
+            var chartDateTime = Symbol?.LastDateTime ?? DateTime.MinValue;
+            if (chartDateTime == DateTime.MinValue || chartDateTime.Year < 2000)
+                return GetEasternNow().Date;
+
+            var referenceDateTimeEastern = GetReferenceDateTimeEastern();
+            var nowEastern = GetEasternNow();
+            return Math.Abs((nowEastern - referenceDateTimeEastern).TotalHours) < 24
+                ? nowEastern.Date
+                : referenceDateTimeEastern.Date;
+        }
+
+        private static DateTime GetEventDateEastern(ForexEvent forexEvent)
+        {
+            if (TryGetEventDateTimeEastern(forexEvent, out var eventDateTimeEastern))
+            {
+                try
+                {
+                    var utc = DateTime.SpecifyKind(eventDateTimeEastern, DateTimeKind.Utc);
+                    return TimeZoneInfo.ConvertTimeFromUtc(utc, EasternTimeZone).Date;
+                }
+                catch
+                {
+                }
+            }
+
+            return forexEvent.Date.Date;
         }
 
         private static bool TryGetEventDateTimeEastern(ForexEvent forexEvent, out DateTime eventDateTimeEastern)
