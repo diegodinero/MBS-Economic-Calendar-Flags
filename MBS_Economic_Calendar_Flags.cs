@@ -283,17 +283,6 @@ namespace MBS_Economic_Calendar_Flags
                 var rect = CurrentChart.Windows[args.WindowIndex].ClientRectangle;
                 g.SetClip(rect);
 
-                // EARLY DEBUG - Always show this if OnPaintChart is called
-                using (var testBrush = new SolidBrush(Color.Red))
-                {
-                    // Draw a red rectangle to visually confirm OnPaintChart is called
-                    g.FillRectangle(testBrush, rect.Left + 10, rect.Top + 10, 200, 30);
-                }
-                using (var textBrush = new SolidBrush(Color.Yellow))
-                {
-                    g.DrawString($"OnPaintChart: dateMode={dateMode}", font, textBrush, rect.Left + 15, rect.Top + 15);
-                }
-
                 int x = rect.Left + newsPositionX;
                 int y = rect.Top + newsPositionY;
 
@@ -358,12 +347,6 @@ namespace MBS_Economic_Calendar_Flags
 
             TryRefreshActuals(forexEvents);
 
-            // Add debug output visible on screen
-            using (var debugBrush = new SolidBrush(Color.Magenta))
-            {
-                g.DrawString($"Chart rendering: forexEvents={forexEvents?.Count ?? 0}, dateMode={dateMode}", font, debugBrush, rect.Left + 10, rect.Top + 10);
-            }
-
             // ✅ Event rendering section
             if (forexEvents != null)
             {
@@ -372,11 +355,6 @@ namespace MBS_Economic_Calendar_Flags
                     .CoordinatesConverter;
 
                 // Draw vertical lines for ALL events (matching the news table, not filtered to highest-impact)
-                Debug.WriteLine($"[EconomicEventsIndicator] Drawing chart elements: {forexEvents.Count} events in forexEvents");
-                var lineDrawnCount = 0;
-                var debugText = new List<string>();
-                debugText.Add($"Events: {forexEvents.Count}");
-
                 foreach (var ev in forexEvents.OrderBy(ParseEventDateTimeForSorting))
                 {
                     try
@@ -391,38 +369,16 @@ namespace MBS_Economic_Calendar_Flags
                         // Convert event time
                         if (TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern))
                         {
-                            float xCoord = (float)conv.GetChartX(eventDateTimeEastern);
-                            Debug.WriteLine($"[EconomicEventsIndicator] Event {ev.Currency} {ev.Event} at {eventDateTimeEastern:yyyy-MM-dd HH:mm}: xCoord={xCoord}, showVerticalLines={showVerticalLines}");
-                            debugText.Add($"{ev.Currency} {ev.Time}: x={xCoord:F0}");
                             if (showVerticalLines)
                             {
+                                float xCoord = (float)conv.GetChartX(eventDateTimeEastern);
                                 g.DrawLine(linePen, xCoord, rect.Top, xCoord, rect.Bottom);
-                                lineDrawnCount++;
                             }
-                        }
-                        else
-                        {
-                            Debug.WriteLine($"[EconomicEventsIndicator] Failed to parse time for event: {ev.Currency} {ev.Event} at {ev.Time}");
-                            debugText.Add($"{ev.Currency}: PARSE FAIL ({ev.Time})");
                         }
                     }
                     catch (Exception evEx)
                     {
                         Debug.WriteLine($"[EconomicEventsIndicator] Error processing event {ev.Currency} {ev.Event}: {evEx.Message}");
-                        debugText.Add($"{ev.Currency}: ERROR - {evEx.Message}");
-                    }
-                }
-                Debug.WriteLine($"[EconomicEventsIndicator] Drew {lineDrawnCount} vertical lines for {forexEvents.Count} events");
-                debugText.Add($"Lines drawn: {lineDrawnCount}");
-
-                // Draw debug info on screen
-                int debugY = rect.Top + 50;
-                using (var debugBrush = new SolidBrush(Color.Cyan))
-                {
-                    foreach (var line in debugText)
-                    {
-                        g.DrawString(line, font, debugBrush, rect.Right - 300, debugY);
-                        debugY += font.Height + 2;
                     }
                 }
 
