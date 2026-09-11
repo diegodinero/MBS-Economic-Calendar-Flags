@@ -259,6 +259,20 @@ namespace MBS_Economic_Calendar_Flags
                 if (!allowed.Contains(NormalizeCurrencyCode(e.Currency)))
                     return false;
             }
+
+            // Filter out past events if showPastEvents is false
+            if (!showPastEvents)
+            {
+                if (TryGetEventDateTimeEastern(e, out var eventDateTimeEastern))
+                {
+                    var nowEastern = GetEasternNow();
+                    if (eventDateTimeEastern < nowEastern)
+                    {
+                        return false;
+                    }
+                }
+            }
+
             return (e.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? highImpact : true)
                 && (e.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? mediumImpact : true)
                 && (e.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? lowImpact : true)
