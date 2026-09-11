@@ -263,12 +263,23 @@ namespace MBS_Economic_Calendar_Flags
             // Filter out past events if showPastEvents is false
             if (!showPastEvents)
             {
-                if (TryGetEventDateTimeEastern(e, out var eventDateTimeEastern))
+                if (TryGetEventDateTimeEastern(e, out var eventDateTimeUtc))
                 {
-                    var nowEastern = GetEasternNow();
-                    if (eventDateTimeEastern < nowEastern)
+                    try
                     {
-                        return false;
+                        // Convert UTC time to Eastern time for proper comparison
+                        var utc = DateTime.SpecifyKind(eventDateTimeUtc, DateTimeKind.Utc);
+                        var eventDateTimeEastern = TimeZoneInfo.ConvertTimeFromUtc(utc, EasternTimeZone);
+                        var nowEastern = GetEasternNow();
+                        
+                        if (eventDateTimeEastern < nowEastern)
+                        {
+                            return false;
+                        }
+                    }
+                    catch
+                    {
+                        // If conversion fails, include the event to be safe
                     }
                 }
             }
