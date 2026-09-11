@@ -222,16 +222,6 @@ namespace MBS_Economic_Calendar_Flags
                         temp = allEvents.Where(e => e.Date.Date == chartDate).ToList();
 
                         Debug.WriteLine($"[EconomicEventsIndicator] Events matching {chartDate:MM/dd/yyyy}: {temp.Count}");
-
-                        // Apply showPastEvents filter for current chart date
-                        if (!showPastEvents)
-                        {
-                            var referenceDateTimeEastern = GetReferenceDateTimeEastern();
-                            temp = temp
-                                .Where(e => !TryGetEventDateTimeEastern(e, out var eventDateTimeEastern)
-                                        || eventDateTimeEastern >= referenceDateTimeEastern)
-                                .ToList();
-                        }
                     }
                     else
                     {
@@ -243,16 +233,10 @@ namespace MBS_Economic_Calendar_Flags
                                      && e.Date.Date <= currentWeekEnd.Date)
                             .ToList();
 
-                        if (!showPastEvents)
-                        {
-                            var referenceDateTimeEastern = GetReferenceDateTimeEastern();
-                            temp = temp
-                                .Where(e => !TryGetEventDateTimeEastern(e, out var eventDateTimeEastern)
-                                        || eventDateTimeEastern >= referenceDateTimeEastern)
-                                .ToList();
-                        }
+                        Debug.WriteLine($"[EconomicEventsIndicator] Week mode: {currentWeekStart:MM/dd} to {currentWeekEnd:MM/dd}, allEvents={allEvents.Count}, week filtered={temp.Count}");
                     }
                     forexEvents = temp.Where(ShouldIncludeEvent).ToList();
+                    Debug.WriteLine($"[EconomicEventsIndicator] After ShouldIncludeEvent filter: forexEvents={forexEvents.Count}");
                 }
             }
             this.Refresh();
@@ -289,19 +273,32 @@ namespace MBS_Economic_Calendar_Flags
 
         public override void OnPaintChart(PaintChartEventArgs args)
         {
-            base.OnPaintChart(args);
-            if (CurrentChart == null || Symbol == null)
-                return;
+            try
+            {
+                base.OnPaintChart(args);
+                if (CurrentChart == null || Symbol == null)
+                    return;
 
-            var g = args.Graphics;
-            var rect = CurrentChart.Windows[args.WindowIndex].ClientRectangle;
-            g.SetClip(rect);
+                var g = args.Graphics;
+                var rect = CurrentChart.Windows[args.WindowIndex].ClientRectangle;
+                g.SetClip(rect);
 
-            int x = rect.Left + newsPositionX;
-            int y = rect.Top + newsPositionY;
+                // EARLY DEBUG - Always show this if OnPaintChart is called
+                using (var testBrush = new SolidBrush(Color.Red))
+                {
+                    // Draw a red rectangle to visually confirm OnPaintChart is called
+                    g.FillRectangle(testBrush, rect.Left + 10, rect.Top + 10, 200, 30);
+                }
+                using (var textBrush = new SolidBrush(Color.Yellow))
+                {
+                    g.DrawString($"OnPaintChart: dateMode={dateMode}", font, textBrush, rect.Left + 15, rect.Top + 15);
+                }
 
-            // ✅ Only show header + status messages if showNewsText = true
-            if (showNewsText)
+                int x = rect.Left + newsPositionX;
+                int y = rect.Top + newsPositionY;
+
+                // ✅ Only show header + status messages if showNewsText = true
+                if (showNewsText)
             {
                 string header;
                 if (dateMode == 1)
@@ -361,6 +358,12 @@ namespace MBS_Economic_Calendar_Flags
 
             TryRefreshActuals(forexEvents);
 
+            // Add debug output visible on screen
+            using (var debugBrush = new SolidBrush(Color.Magenta))
+            {
+                g.DrawString($"Chart rendering: forexEvents={forexEvents?.Count ?? 0}, dateMode={dateMode}", font, debugBrush, rect.Left + 10, rect.Top + 10);
+            }
+
             // ✅ Event rendering section
             if (forexEvents != null)
             {
@@ -368,28 +371,63 @@ namespace MBS_Economic_Calendar_Flags
                     .Windows[args.WindowIndex]
                     .CoordinatesConverter;
 
-                foreach (var ev in GetHighestImpactEventsByTime(forexEvents))
-                {
-                    // Pick line color
-                    Pen linePen =
-                        ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Pens.Red :
-                        ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Pens.Orange :
-                        ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Pens.Green :
-                        Pens.White;
+                // Draw vertical lines for ALL events (matching the news table, not filtered to highest-impact)
+                Debug.WriteLine($"[EconomicEventsIndicator] Drawing chart elements: {forexEvents.Count} events in forexEvents");
+                var lineDrawnCount = 0;
+                var debugText = new List<string>();
+                debugText.Add($"Events: {forexEvents.Count}");
 
-                    // Convert event time
-                    if (TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern))
+                foreach (var ev in forexEvents.OrderBy(ParseEventDateTimeForSorting))
+                {
+                    try
                     {
-                        if (showVerticalLines)
+                        // Pick line color
+                        Pen linePen =
+                            ev.Impact.Equals("High", StringComparison.OrdinalIgnoreCase) ? Pens.Red :
+                            ev.Impact.Equals("Medium", StringComparison.OrdinalIgnoreCase) ? Pens.Orange :
+                            ev.Impact.Equals("Low", StringComparison.OrdinalIgnoreCase) ? Pens.Green :
+                            Pens.White;
+
+                        // Convert event time
+                        if (TryGetEventDateTimeEastern(ev, out var eventDateTimeEastern))
                         {
                             float xCoord = (float)conv.GetChartX(eventDateTimeEastern);
-                            g.DrawLine(linePen, xCoord, rect.Top, xCoord, rect.Bottom);
+                            Debug.WriteLine($"[EconomicEventsIndicator] Event {ev.Currency} {ev.Event} at {eventDateTimeEastern:yyyy-MM-dd HH:mm}: xCoord={xCoord}, showVerticalLines={showVerticalLines}");
+                            debugText.Add($"{ev.Currency} {ev.Time}: x={xCoord:F0}");
+                            if (showVerticalLines)
+                            {
+                                g.DrawLine(linePen, xCoord, rect.Top, xCoord, rect.Bottom);
+                                lineDrawnCount++;
+                            }
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"[EconomicEventsIndicator] Failed to parse time for event: {ev.Currency} {ev.Event} at {ev.Time}");
+                            debugText.Add($"{ev.Currency}: PARSE FAIL ({ev.Time})");
                         }
                     }
+                    catch (Exception evEx)
+                    {
+                        Debug.WriteLine($"[EconomicEventsIndicator] Error processing event {ev.Currency} {ev.Event}: {evEx.Message}");
+                        debugText.Add($"{ev.Currency}: ERROR - {evEx.Message}");
+                    }
+                }
+                Debug.WriteLine($"[EconomicEventsIndicator] Drew {lineDrawnCount} vertical lines for {forexEvents.Count} events");
+                debugText.Add($"Lines drawn: {lineDrawnCount}");
 
+                // Draw debug info on screen
+                int debugY = rect.Top + 50;
+                using (var debugBrush = new SolidBrush(Color.Cyan))
+                {
+                    foreach (var line in debugText)
+                    {
+                        g.DrawString(line, font, debugBrush, rect.Right - 300, debugY);
+                        debugY += font.Height + 2;
+                    }
                 }
 
                 var hoveredFlag = DrawEventFlags(g, rect, eventTimeEastern => (float)conv.GetChartX(eventTimeEastern), args.MousePosition);
+                Debug.WriteLine($"[EconomicEventsIndicator] DrawEventFlags returned: {(hoveredFlag != null ? "hovered event found" : "no hovered event")}");
                 if (showHoverInfo && hoveredFlag != null)
                 {
                     int cardHeight = GetEventCardHeight();
@@ -399,6 +437,31 @@ namespace MBS_Economic_Calendar_Flags
                     cardY = Math.Max(rect.Top, Math.Min(cardY, rect.Bottom - cardHeight));
 
                     DrawEventCard(g, hoveredFlag.Event, cardX, cardY);
+                }
+            }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[EconomicEventsIndicator] EXCEPTION in OnPaintChart: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                // Display error on chart
+                using (var errorBrush = new SolidBrush(Color.Red))
+                {
+                    var rect = CurrentChart?.Windows[args.WindowIndex].ClientRectangle ?? new Rectangle();
+                    args.Graphics.FillRectangle(errorBrush, rect.Left + 10, rect.Top + 50, 500, 100);
+                }
+                using (var textBrush = new SolidBrush(Color.Yellow))
+                {
+                    var rect = CurrentChart?.Windows[args.WindowIndex].ClientRectangle ?? new Rectangle();
+                    int lineY = rect.Top + 55;
+                    args.Graphics.DrawString($"{ex.GetType().Name}: {ex.Message}", font, textBrush, rect.Left + 15, lineY);
+                    lineY += font.Height + 5;
+                    string[] stackLines = ex.StackTrace?.Split('\n') ?? new string[0];
+                    for (int i = 0; i < Math.Min(2, stackLines.Length); i++)
+                    {
+                        string shortLine = stackLines[i].Trim().Length > 60 ? stackLines[i].Trim().Substring(0, 57) + "..." : stackLines[i].Trim();
+                        args.Graphics.DrawString(shortLine, font, textBrush, rect.Left + 15, lineY);
+                        lineY += font.Height;
+                    }
                 }
             }
         }
@@ -1014,8 +1077,15 @@ namespace MBS_Economic_Calendar_Flags
                 return string.Empty;
 
             var trimmed = time.Trim();
-            if (TimeSpan.TryParse(trimmed, CultureInfo.InvariantCulture, out var parsedTime))
-                return parsedTime.ToString(@"HH\:mm", CultureInfo.InvariantCulture);
+            try
+            {
+                if (TimeSpan.TryParse(trimmed, CultureInfo.InvariantCulture, out var parsedTime))
+                    return parsedTime.ToString(@"HH\:mm", CultureInfo.InvariantCulture);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[EconomicEventsIndicator] Error formatting time '{trimmed}': {ex.Message}");
+            }
 
             return trimmed;
         }
