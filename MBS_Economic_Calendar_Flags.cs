@@ -379,8 +379,8 @@ namespace MBS_Economic_Calendar_Flags
                     .Windows[args.WindowIndex]
                     .CoordinatesConverter;
 
-                // Draw vertical lines for ALL events (matching the news table, not filtered to highest-impact)
-                foreach (var ev in forexEvents.OrderBy(ParseEventDateTimeForSorting))
+                // Draw vertical lines for highest-impact events only (one line per time slot)
+                foreach (var ev in GetHighestImpactEventsByTime(forexEvents))
                 {
                     try
                     {
